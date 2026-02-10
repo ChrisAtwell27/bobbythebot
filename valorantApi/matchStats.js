@@ -163,7 +163,7 @@ async function getPlayerMatchStats(registration, forceRefresh = false) {
         }
 
         // Calculate averages and ratios
-        const avgKDA = totalDeaths > 0 ? (totalKills + totalAssists) / totalDeaths : totalKills + totalAssists;
+        const avgKDA = totalDeaths > 0 ? (totalKills + totalAssists * 0.5) / totalDeaths : totalKills + totalAssists * 0.5;
         const winRate = validMatches > 0 ? (wins / validMatches) * 100 : 0;
         // Average ACS across all matches
         const avgACS = validMatches > 0 ? totalACS / validMatches : 0;
@@ -270,7 +270,7 @@ async function getPlayerMatchStatsLegacy(registration, forceRefresh = false) {
             validMatches++;
         }
 
-        const avgKDA = totalDeaths > 0 ? (totalKills + totalAssists) / totalDeaths : totalKills + totalAssists;
+        const avgKDA = totalDeaths > 0 ? (totalKills + totalAssists * 0.5) / totalDeaths : totalKills + totalAssists * 0.5;
         const winRate = validMatches > 0 ? (wins / validMatches) * 100 : 0;
         const avgACS = validMatches > 0 ? totalScore / validMatches : 0;
 
@@ -315,7 +315,7 @@ async function getPlayerMatchStatsLegacy(registration, forceRefresh = false) {
  * @returns {number} - KDA ratio
  */
 function calculateKDA(kills, deaths, assists) {
-    return deaths > 0 ? (kills + assists) / deaths : kills + assists;
+    return deaths > 0 ? (kills + assists * 0.5) / deaths : kills + assists * 0.5;
 }
 
 /**
@@ -465,8 +465,8 @@ function getAgentStatsFromMatches(registration, matchData) {
     for (const [agentId, stats] of Object.entries(agentStats)) {
         // Calculate KDA
         stats.kda = stats.deaths > 0
-            ? (stats.kills + stats.assists) / stats.deaths
-            : stats.kills + stats.assists;
+            ? (stats.kills + stats.assists * 0.5) / stats.deaths
+            : stats.kills + stats.assists * 0.5;
 
         // Calculate win rate (for display only, not used in scoring)
         stats.winRate = stats.games > 0 ? (stats.wins / stats.games) * 100 : 0;
@@ -641,12 +641,12 @@ function getTeammateStatsFromMatches(registration, matchData) {
         .map(([key, stats]) => {
             const winRate = stats.gamesPlayed > 0 ? (stats.wins / stats.gamesPlayed) * 100 : 0;
             const theirKDA = stats.totalDeaths > 0
-                ? (stats.totalKills + stats.totalAssists) / stats.totalDeaths
-                : stats.totalKills + stats.totalAssists;
+                ? (stats.totalKills + stats.totalAssists * 0.5) / stats.totalDeaths
+                : stats.totalKills + stats.totalAssists * 0.5;
             const theirAvgACS = stats.gamesPlayed > 0 ? stats.totalScore / stats.gamesPlayed : 0;
             const yourKDA = stats.yourDeaths > 0
-                ? (stats.yourKills + stats.yourAssists) / stats.yourDeaths
-                : stats.yourKills + stats.yourAssists;
+                ? (stats.yourKills + stats.yourAssists * 0.5) / stats.yourDeaths
+                : stats.yourKills + stats.yourAssists * 0.5;
             const yourAvgACS = stats.gamesPlayed > 0 ? stats.yourScore / stats.gamesPlayed : 0;
 
             // Find their most played agent
