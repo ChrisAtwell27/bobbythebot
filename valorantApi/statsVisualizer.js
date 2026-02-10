@@ -434,13 +434,14 @@ async function createStatsVisualization(accountData, mmrData, matchData, userAva
         ctx.font = 'bold 20px Arial';
         ctx.fillText(`${Math.round(bestAgent.avgACS)}`, statsStartX + 310, agentBoxY + 45);
 
-        // K/D/A totals (moved to where HS% was since stored matches don't have headshot data)
+        // Headshot percentage
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 14px Arial';
-        ctx.fillText('K/D/A', statsStartX + 420, agentBoxY + 20);
-        ctx.fillStyle = '#ffffff';
+        ctx.fillText('HS%', statsStartX + 420, agentBoxY + 20);
+        const hsColor = bestAgent.hsPercent >= 30 ? '#00ff88' : bestAgent.hsPercent >= 20 ? '#ffff00' : '#ff8800';
+        ctx.fillStyle = hsColor;
         ctx.font = 'bold 20px Arial';
-        ctx.fillText(`${bestAgent.kills}/${bestAgent.deaths}/${bestAgent.assists}`, statsStartX + 420, agentBoxY + 45);
+        ctx.fillText(`${bestAgent.hsPercent.toFixed(1)}%`, statsStartX + 420, agentBoxY + 45);
     }
 
     // Adjust match section Y position based on whether best agent is shown

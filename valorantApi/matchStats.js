@@ -117,7 +117,8 @@ async function getPlayerMatchStats(registration, forceRefresh = false) {
                 wins: 0,
                 avgKDA: 0,
                 winRate: 0,
-                avgACS: 0
+                avgACS: 0,
+                hsPercent: 0
             };
         }
 
@@ -128,6 +129,9 @@ async function getPlayerMatchStats(registration, forceRefresh = false) {
         let totalDeaths = 0;
         let totalAssists = 0;
         let totalACS = 0;
+        let totalHeadshots = 0;
+        let totalBodyshots = 0;
+        let totalLegshots = 0;
         let wins = 0;
         let validMatches = 0;
 
@@ -148,6 +152,9 @@ async function getPlayerMatchStats(registration, forceRefresh = false) {
             totalAssists += playerStats.assists || 0;
             // score field is already ACS (Average Combat Score per round)
             totalACS += playerStats.score || 0;
+            totalHeadshots += playerStats.headshots || 0;
+            totalBodyshots += playerStats.bodyshots || 0;
+            totalLegshots += playerStats.legshots || 0;
 
             // Determine if won based on team scores
             const redScore = teams.red || 0;
@@ -167,11 +174,15 @@ async function getPlayerMatchStats(registration, forceRefresh = false) {
         const winRate = validMatches > 0 ? (wins / validMatches) * 100 : 0;
         // Average ACS across all matches
         const avgACS = validMatches > 0 ? totalACS / validMatches : 0;
+        // Headshot percentage across all matches
+        const totalShots = totalHeadshots + totalBodyshots + totalLegshots;
+        const hsPercent = totalShots > 0 ? (totalHeadshots / totalShots) * 100 : 0;
 
         console.log(`[Match Stats] Player ${registration.name}#${registration.tag} stats from ${validMatches} competitive matches:`);
         console.log(`  - KDA: ${totalKills}/${totalDeaths}/${totalAssists} (${avgKDA.toFixed(2)})`);
         console.log(`  - Win Rate: ${winRate.toFixed(1)}%`);
         console.log(`  - Avg ACS: ${avgACS.toFixed(0)}`);
+        console.log(`  - HS%: ${hsPercent.toFixed(1)}%`);
 
         const stats = {
             totalKills,
@@ -181,7 +192,8 @@ async function getPlayerMatchStats(registration, forceRefresh = false) {
             wins,
             avgKDA,
             winRate,
-            avgACS
+            avgACS,
+            hsPercent
         };
 
         // Cache the results
@@ -224,7 +236,8 @@ async function getPlayerMatchStatsLegacy(registration, forceRefresh = false) {
                 wins: 0,
                 avgKDA: 0,
                 winRate: 0,
-                avgACS: 0
+                avgACS: 0,
+                hsPercent: 0
             };
         }
 
@@ -243,7 +256,8 @@ async function getPlayerMatchStatsLegacy(registration, forceRefresh = false) {
                 wins: 0,
                 avgKDA: 0,
                 winRate: 0,
-                avgACS: 0
+                avgACS: 0,
+                hsPercent: 0
             };
         }
 
@@ -251,6 +265,9 @@ async function getPlayerMatchStatsLegacy(registration, forceRefresh = false) {
         let totalDeaths = 0;
         let totalAssists = 0;
         let totalScore = 0;
+        let totalHeadshots = 0;
+        let totalBodyshots = 0;
+        let totalLegshots = 0;
         let wins = 0;
         let validMatches = 0;
 
@@ -264,6 +281,9 @@ async function getPlayerMatchStatsLegacy(registration, forceRefresh = false) {
             totalDeaths += player.stats.deaths;
             totalAssists += player.stats.assists;
             totalScore += player.stats.score;
+            totalHeadshots += player.stats.headshots || 0;
+            totalBodyshots += player.stats.bodyshots || 0;
+            totalLegshots += player.stats.legshots || 0;
 
             const won = player.team_id === (match.teams.find(t => t.won) || {}).team_id;
             if (won) wins++;
@@ -273,6 +293,8 @@ async function getPlayerMatchStatsLegacy(registration, forceRefresh = false) {
         const avgKDA = totalDeaths > 0 ? (totalKills + totalAssists * 0.5) / totalDeaths : totalKills + totalAssists * 0.5;
         const winRate = validMatches > 0 ? (wins / validMatches) * 100 : 0;
         const avgACS = validMatches > 0 ? totalScore / validMatches : 0;
+        const totalShots = totalHeadshots + totalBodyshots + totalLegshots;
+        const hsPercent = totalShots > 0 ? (totalHeadshots / totalShots) * 100 : 0;
 
         console.log(`[Match Stats] Legacy: Player ${registration.name}#${registration.tag} stats from ${validMatches} matches`);
 
@@ -284,7 +306,8 @@ async function getPlayerMatchStatsLegacy(registration, forceRefresh = false) {
             wins,
             avgKDA,
             winRate,
-            avgACS
+            avgACS,
+            hsPercent
         };
 
         // Cache the results
@@ -302,7 +325,8 @@ async function getPlayerMatchStatsLegacy(registration, forceRefresh = false) {
             wins: 0,
             avgKDA: 0,
             winRate: 0,
-            avgACS: 0
+            avgACS: 0,
+            hsPercent: 0
         };
     }
 }

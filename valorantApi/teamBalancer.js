@@ -14,26 +14,30 @@
  * @returns {number} - Calculated skill score
  */
 function calculateEnhancedSkillScore(currentTier, peakTier, winRate, currentRR, avgKDA, avgACS) {
-    // Enhanced skill score formula with KDA integration
-    // Current tier: 35% weight (still most important)
-    // KDA: 25% weight (significant impact on individual skill)
-    // Win rate: 20% weight
+    // Enhanced skill score formula with KDA and ACS integration
+    // Current tier: 30% weight (most important)
+    // KDA: 20% weight (individual skill)
+    // ACS: 15% weight (combat impact per round)
+    // Win rate: 15% weight
     // Peak tier: 15% weight
     // Current RR: 5% weight
 
-    const currentScore = currentTier * 0.35;
+    const currentScore = currentTier * 0.30;
 
     // KDA score: normalize to similar scale as ranks (0-27)
     // Good KDA is around 1.0-1.5, excellent is 2.0+
-    const kdaScore = Math.min(avgKDA * 8, 27) * 0.25; // Cap at 27 equivalent points
+    const kdaScore = Math.min(avgKDA * 8, 27) * 0.20; // Cap at 27 equivalent points
 
-    const winRateScore = (winRate / 100) * 8 * 0.20; // Normalize win rate to similar scale
+    // ACS score: normalize to 0-27 scale (300+ ACS = max score)
+    const acsScore = Math.min((avgACS || 0) / 300, 1) * 27 * 0.15;
+
+    const winRateScore = (winRate / 100) * 8 * 0.15; // Normalize win rate to similar scale
     const peakScore = peakTier * 0.15;
     const rrScore = (currentRR / 100) * 0.05; // RR contributes least
 
-    const totalScore = currentScore + kdaScore + winRateScore + peakScore + rrScore;
+    const totalScore = currentScore + kdaScore + acsScore + winRateScore + peakScore + rrScore;
 
-    console.log(`[Team Balancer] Skill calculation: Current(${currentTier}*0.35=${currentScore.toFixed(2)}) + KDA(${avgKDA.toFixed(2)}*8*0.25=${kdaScore.toFixed(2)}) + WR(${winRate.toFixed(1)}%*0.20=${winRateScore.toFixed(2)}) + Peak(${peakTier}*0.15=${peakScore.toFixed(2)}) + RR(${currentRR}*0.05=${rrScore.toFixed(2)}) = ${totalScore.toFixed(2)}`);
+    console.log(`[Team Balancer] Skill calculation: Current(${currentTier}*0.30=${currentScore.toFixed(2)}) + KDA(${avgKDA.toFixed(2)}*8*0.20=${kdaScore.toFixed(2)}) + ACS(${(avgACS || 0).toFixed(0)}/300*0.15=${acsScore.toFixed(2)}) + WR(${winRate.toFixed(1)}%*0.15=${winRateScore.toFixed(2)}) + Peak(${peakTier}*0.15=${peakScore.toFixed(2)}) + RR(${currentRR}*0.05=${rrScore.toFixed(2)}) = ${totalScore.toFixed(2)}`);
 
     return totalScore;
 }

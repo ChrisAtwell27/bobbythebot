@@ -1488,7 +1488,7 @@ async function handleCreateTeams(client, message, messageId, channelId = null) {
       .addFields({
         name: "🧮 Skill Formula Components",
         value:
-          "• Current Rank (35%)\n• KDA Ratio (25%)\n• Win Rate (20%)\n• Peak Rank (15%)\n• Current RR (5%)",
+          "• Current Rank (30%)\n• KDA Ratio (20%)\n• ACS (15%)\n• Win Rate (15%)\n• Peak Rank (15%)\n• Current RR (5%)",
         inline: false,
       })
       .setTimestamp();
@@ -1605,7 +1605,7 @@ async function displayBalancedTeams(
   }
 
   embed.setTimestamp().setFooter({
-    text: "Balanced using: Current Rank (35%) + KDA (25%) + Win Rate (20%) + Peak Rank (15%) + RR (5%) • Use !valskills (admin) to view ratings",
+    text: "Balanced using: Current Rank (30%) + KDA (20%) + ACS (15%) + Win Rate (15%) + Peak Rank (15%) + RR (5%) • Use !valskills (admin) to view ratings",
   });
 
   await loadingMessage.edit({ embeds: [embed] });
@@ -1918,7 +1918,7 @@ module.exports = {
             .setTitle("🎯 Player Skill Ratings")
             .setColor("#ff4654")
             .setDescription(
-              `Comprehensive skill ratings for ${playerSkills.length} players\n\n**Formula:** Current Rank (35%) + KDA (25%) + Win Rate (20%) + Peak Rank (15%) + RR (5%)`
+              `Comprehensive skill ratings for ${playerSkills.length} players\n\n**Formula:** Current Rank (30%) + KDA (20%) + ACS (15%) + Win Rate (15%) + Peak Rank (15%) + RR (5%)`
             )
             .setTimestamp();
 
