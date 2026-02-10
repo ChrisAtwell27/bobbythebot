@@ -42,7 +42,6 @@ const SETTING_REQUIREMENTS = {
   "features.team_builder": "plus",
   "features.ask": "plus", // Bobby AI Chat
   "features.shop": "plus",
-  "features.lottery": "plus", // Weekly lottery system
   "features.betting": "plus", // Custom betting pools
 
   // =====================================================================
@@ -83,9 +82,6 @@ const SETTING_REQUIREMENTS = {
   // Shop channels
   "channels.shop": "plus", // Channel where shop items are displayed
   "channels.shop_notifications": "plus", // Channel for purchase notifications
-
-  // Lottery channels
-  "channels.lottery": "plus", // Channel for lottery draws and entries
 
   // Betting channels
   "channels.betting": "plus", // Channel for betting pools

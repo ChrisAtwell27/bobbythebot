@@ -52,8 +52,6 @@ module.exports = (client, commandRouter, interactionRouter) => {
   // Setup reminder handler - periodically DMs owners of unconfigured servers
   require("./setupReminderHandler")(client);
 
-  // Lottery handler - weekly lottery system with scheduled draws
-  require("./lotteryHandler")(client);
 
   // Vote reminder handler - weekly reminders to vote on top.gg
   require("./voteReminderHandler")(client);

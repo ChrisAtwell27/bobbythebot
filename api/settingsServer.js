@@ -460,7 +460,6 @@ class SettingsServer {
             "clip_submission",
             "shop",
             "shop_notifications",
-            "lottery",
             "betting",
             "verification",
             "verification_log",
@@ -789,7 +788,6 @@ class SettingsServer {
             "shop",
             "ask",
             "custom_branding",
-            "lottery",
             "betting",
             "verification",
           ];

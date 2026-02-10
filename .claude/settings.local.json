@@ -23,7 +23,8 @@
       "Bash(npx convex import:*)",
       "Bash(node craftle/scripts/parseMinecraftRecipes.js:*)",
       "Bash(node:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(del \"d:\\\\TestDCBot\\\\BobbyTheBot\\\\events\\\\lotteryHandler.js\")"
     ],
     "deny": []
   }

@@ -63,7 +63,7 @@ function createSetupReminderEmbed(guildName) {
       {
         name: '✨ What You Can Configure',
         value: [
-          '• **Channels** - Set up lottery, betting, trivia, and more',
+          '• **Channels** - Set up betting, trivia, and more',
           '• **Features** - Enable/disable gambling, moderation, valorant tools',
           '• **Roles** - Configure notification roles and permissions',
           '• **Admin Roles** - Set which roles can manage the bot',
@@ -74,7 +74,7 @@ function createSetupReminderEmbed(guildName) {
         name: '🎮 Popular Features',
         value: [
           '• 🎰 Casino & Gambling system',
-          '• 🎫 Weekly Lottery',
+
           '• 🎯 Valorant Team Builder & Stats',
           '• 🧩 Daily Wordle & Trivia',
           '• 🕵️ Mafia Game',
@@ -110,7 +110,7 @@ function createMultiServerReminderEmbed(guildNames) {
       {
         name: '✨ What You Can Configure',
         value: [
-          '• **Channels** - Set up lottery, betting, trivia, and more',
+          '• **Channels** - Set up betting, trivia, and more',
           '• **Features** - Enable/disable gambling, moderation, valorant tools',
           '• **Roles** - Configure notification roles and permissions',
           '• **Admin Roles** - Set which roles can manage the bot',
@@ -121,7 +121,7 @@ function createMultiServerReminderEmbed(guildNames) {
         name: '🎮 Popular Features',
         value: [
           '• 🎰 Casino & Gambling system',
-          '• 🎫 Weekly Lottery',
+
           '• 🎯 Valorant Team Builder & Stats',
           '• 🧩 Daily Wordle & Trivia',
           '• 🕵️ Mafia Game',

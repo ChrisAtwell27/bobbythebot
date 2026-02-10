@@ -453,39 +453,6 @@ const HELP_CATEGORIES = {
       },
     ],
   },
-  lottery: {
-    name: "🎰 Weekly Lottery",
-    emoji: "🎰",
-    description: "Weekly number lottery with massive jackpots (PLUS TIER)",
-    tier: "plus",
-    commands: [
-      {
-        name: "!lottery setup",
-        description: "**[ADMIN]** Set up the weekly lottery in a channel",
-        usage: "!lottery setup [#channel]",
-      },
-      {
-        name: "!lottery status",
-        description: "**[ADMIN]** View lottery status and settings",
-        usage: "!lottery status",
-      },
-      {
-        name: "!lottery forcedraw",
-        description: "**[ADMIN]** Force an immediate lottery draw",
-        usage: "!lottery forcedraw",
-      },
-      {
-        name: "!lottery history",
-        description: "View past lottery results",
-        usage: "!lottery history",
-      },
-      {
-        name: "Enter Lottery (Button)",
-        description: "Click the button on the lottery embed to pick 3 numbers",
-        usage: "Click 'Enter Lottery' button",
-      },
-    ],
-  },
   betting: {
     name: "🎲 Betting Pools",
     emoji: "🎲",
@@ -1257,7 +1224,7 @@ module.exports = (client) => {
           {
             name: "⭐ Plus Features",
             value:
-              "⚔️ PvP Games\n👑 King of the Hill\n🐝 Bee Mafia (65+ roles)\n🎯 Bounty System\n🎰 Lottery & Betting\n🛒 Server Shop\n🎂 Birthdays",
+              "⚔️ PvP Games\n👑 King of the Hill\n🐝 Bee Mafia (65+ roles)\n🎯 Bounty System\n🎰 Betting\n🛒 Server Shop\n🎂 Birthdays",
             inline: true,
           },
           {
@@ -1438,7 +1405,7 @@ module.exports = (client) => {
           {
             name: "⭐ Plus Features",
             value:
-              "⚔️ PvP Games\n👑 King of the Hill\n🐝 Bee Mafia (65+ roles)\n🎯 Bounty System\n🎰 Lottery & Betting\n🛒 Server Shop\n🎂 Birthdays",
+              "⚔️ PvP Games\n👑 King of the Hill\n🐝 Bee Mafia (65+ roles)\n🎯 Bounty System\n🎰 Betting\n🛒 Server Shop\n🎂 Birthdays",
             inline: true,
           },
           {

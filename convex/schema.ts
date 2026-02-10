@@ -354,67 +354,6 @@ export default defineSchema({
     .index("by_guild", ["guildId"]),
 
   // ============================================================================
-  // LOTTERY STATE TABLE (One per guild)
-  // ============================================================================
-  lotteryState: defineTable({
-    guildId: v.string(),
-    jackpot: v.number(), // Current jackpot amount (starts at 200000, grows by 50000 each week)
-    weekNumber: v.number(), // Current week number
-    lastDrawTime: v.optional(v.number()), // Timestamp of last draw
-    lastWinner: v.optional(v.object({
-      userId: v.string(),
-      username: v.string(),
-      numbers: v.array(v.number()),
-      amount: v.number(),
-      timestamp: v.number(),
-    })),
-    winningNumbers: v.optional(v.array(v.number())), // Last drawn winning numbers
-    channelId: v.optional(v.string()), // Lottery channel ID
-    mainMessageId: v.optional(v.string()), // Main lottery embed message ID
-    status: v.union(
-      v.literal("open"), // Accepting entries
-      v.literal("drawing"), // Drawing in progress
-      v.literal("closed") // Temporarily closed
-    ),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_guild", ["guildId"]),
-
-  // ============================================================================
-  // LOTTERY ENTRIES TABLE (User entries per week)
-  // ============================================================================
-  lotteryEntries: defineTable({
-    guildId: v.string(),
-    weekNumber: v.number(), // Which week this entry is for
-    userId: v.string(),
-    username: v.string(),
-    numbers: v.array(v.number()), // The 3 numbers they picked (1-20)
-    enteredAt: v.number(),
-  })
-    .index("by_guild_and_week", ["guildId", "weekNumber"])
-    .index("by_guild_week_user", ["guildId", "weekNumber", "userId"]),
-
-  // ============================================================================
-  // LOTTERY HISTORY TABLE (Past winners)
-  // ============================================================================
-  lotteryHistory: defineTable({
-    guildId: v.string(),
-    weekNumber: v.number(),
-    winningNumbers: v.array(v.number()),
-    jackpot: v.number(),
-    winner: v.optional(v.object({
-      userId: v.string(),
-      username: v.string(),
-      numbers: v.array(v.number()),
-    })),
-    totalEntries: v.number(),
-    drawnAt: v.number(),
-  })
-    .index("by_guild", ["guildId"])
-    .index("by_guild_and_week", ["guildId", "weekNumber"]),
-
-  // ============================================================================
   // BETTING POOLS TABLE (Admin-created bets)
   // ============================================================================
   bets: defineTable({
