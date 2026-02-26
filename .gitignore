@@ -1,7 +1,13 @@
 # Dependencies
-/node_modules
-node_modules/.package-lock.json
-node_modules/form-data/lib/browser.js
+node_modules/
+
+# Backup files
+*.backup
+*.old
+*.bak
+
+# Large assets (use external storage)
+images/minecraft-assets-*
 
 # Environment variables
 .env
