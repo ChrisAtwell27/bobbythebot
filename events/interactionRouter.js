@@ -4,6 +4,8 @@
  * to dramatically reduce CPU usage by processing interactions only once.
  */
 
+const { trackEvent } = require('../utils/analytics');
+
 // Maps for different interaction types
 const buttonHandlers = new Map();
 const selectMenuHandlers = new Map();
@@ -17,6 +19,18 @@ module.exports = (client) => {
   client.on("interactionCreate", async (interaction) => {
     try {
       // Route to appropriate handler based on interaction type
+      // Track all interactions
+      const eventType = interaction.isButton() ? 'button_click'
+        : interaction.isStringSelectMenu() || interaction.isRoleSelectMenu() || interaction.isUserSelectMenu() || interaction.isChannelSelectMenu() ? 'menu_select'
+        : interaction.isChatInputCommand() || interaction.isCommand() ? 'slash_command'
+        : interaction.isModalSubmit() ? 'modal_submit'
+        : 'interaction';
+      trackEvent(eventType, {
+        command: interaction.commandName || interaction.customId,
+        guildId: interaction.guild?.id,
+        userId: interaction.user?.id,
+      });
+
       if (interaction.isButton()) {
         await handleButton(interaction);
       } else if (

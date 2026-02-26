@@ -8,6 +8,8 @@
  * 2. Message processors - need to see all messages (like alertHandler, askHandler)
  */
 
+const { trackEvent } = require('../utils/analytics');
+
 // Command handlers map (!command based)
 const commandHandlers = new Map();
 
@@ -45,6 +47,13 @@ module.exports = (client) => {
         const guildName = message.guild?.name || "DM";
         const channelName = message.channel?.name || "unknown";
         console.log(`[CMD] !${commandName} | User: ${message.author.tag} (${message.author.id}) | Guild: ${guildName} | Channel: #${channelName}`);
+
+        // Track command usage
+        trackEvent('command_use', {
+          command: commandName,
+          guildId: message.guild?.id,
+          userId: message.author.id,
+        });
 
         try {
           await handler(message, args, commandName);
