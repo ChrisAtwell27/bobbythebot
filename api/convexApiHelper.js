@@ -259,6 +259,54 @@ async function updateVerificationCheck(discordId) {
 }
 
 /**
+ * Get analytics event counts grouped by event type
+ * @param {number} [startTime] - Start of time range (Unix ms)
+ * @param {number} [endTime] - End of time range (Unix ms)
+ * @returns {Promise<Record<string, number>>} Event type -> count
+ */
+async function getEventCounts(startTime, endTime) {
+    const client = initConvexClient();
+    try {
+        return await client.query(api.analytics.getEventCounts, { startTime, endTime });
+    } catch (error) {
+        console.error('[Convex API Helper] Error getting event counts:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get command usage ranked by frequency
+ * @param {number} [startTime] - Start of time range (Unix ms)
+ * @param {number} [limit] - Max results (default 20)
+ * @returns {Promise<Array<{command: string, count: number}>>}
+ */
+async function getCommandUsage(startTime, limit) {
+    const client = initConvexClient();
+    try {
+        return await client.query(api.analytics.getCommandUsage, { startTime, limit });
+    } catch (error) {
+        console.error('[Convex API Helper] Error getting command usage:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get top guilds by activity
+ * @param {number} [startTime] - Start of time range (Unix ms)
+ * @param {number} [limit] - Max results (default 10)
+ * @returns {Promise<Array<{guildId: string, count: number}>>}
+ */
+async function getTopGuilds(startTime, limit) {
+    const client = initConvexClient();
+    try {
+        return await client.query(api.analytics.getTopGuilds, { startTime, limit });
+    } catch (error) {
+        console.error('[Convex API Helper] Error getting top guilds:', error);
+        throw error;
+    }
+}
+
+/**
  * Get tier features based on tier level
  * @param {string} tier - Subscription tier (free, plus, ultimate)
  * @returns {string[]} Array of feature names
@@ -287,4 +335,7 @@ module.exports = {
     cancelSubscription,
     updateVerificationCheck,
     getTierFeatures,
+    getEventCounts,
+    getCommandUsage,
+    getTopGuilds,
 };

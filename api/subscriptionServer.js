@@ -855,6 +855,56 @@ class SubscriptionServer {
             }
         });
 
+        // ==================== Analytics Endpoints ====================
+
+        /**
+         * Get event counts grouped by type
+         * Query params: startTime (ms), endTime (ms)
+         */
+        this.app.get('/api/analytics/events', this.verifyApiKey.bind(this), async (req, res) => {
+            try {
+                const startTime = req.query.startTime ? Number(req.query.startTime) : undefined;
+                const endTime = req.query.endTime ? Number(req.query.endTime) : undefined;
+                const data = await ConvexHelper.getEventCounts(startTime, endTime);
+                res.json({ success: true, data });
+            } catch (error) {
+                console.error('[Subscription API] Analytics events error:', error);
+                res.status(500).json({ success: false, error: 'Failed to fetch event counts', message: error.message });
+            }
+        });
+
+        /**
+         * Get command usage ranked by frequency
+         * Query params: startTime (ms), limit (number)
+         */
+        this.app.get('/api/analytics/commands', this.verifyApiKey.bind(this), async (req, res) => {
+            try {
+                const startTime = req.query.startTime ? Number(req.query.startTime) : undefined;
+                const limit = req.query.limit ? Number(req.query.limit) : undefined;
+                const data = await ConvexHelper.getCommandUsage(startTime, limit);
+                res.json({ success: true, data });
+            } catch (error) {
+                console.error('[Subscription API] Analytics commands error:', error);
+                res.status(500).json({ success: false, error: 'Failed to fetch command usage', message: error.message });
+            }
+        });
+
+        /**
+         * Get top guilds by activity
+         * Query params: startTime (ms), limit (number)
+         */
+        this.app.get('/api/analytics/guilds', this.verifyApiKey.bind(this), async (req, res) => {
+            try {
+                const startTime = req.query.startTime ? Number(req.query.startTime) : undefined;
+                const limit = req.query.limit ? Number(req.query.limit) : undefined;
+                const data = await ConvexHelper.getTopGuilds(startTime, limit);
+                res.json({ success: true, data });
+            } catch (error) {
+                console.error('[Subscription API] Analytics guilds error:', error);
+                res.status(500).json({ success: false, error: 'Failed to fetch top guilds', message: error.message });
+            }
+        });
+
         // ==================== 404 Handler ====================
 
         this.app.use((req, res) => {
@@ -873,7 +923,10 @@ class SubscriptionServer {
                     'POST /api/subscription',
                     'DELETE /api/subscription/:discordId',
                     'GET  /api/subscriptions',
-                    'GET  /api/subscriptions/stats'
+                    'GET  /api/subscriptions/stats',
+                    'GET  /api/analytics/events',
+                    'GET  /api/analytics/commands',
+                    'GET  /api/analytics/guilds'
                 ]
             });
         });
