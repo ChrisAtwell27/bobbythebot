@@ -753,4 +753,21 @@ export default defineSchema({
   })
     .index("by_guild_and_type", ["guildId", "type"])
     .index("by_guild_period", ["guildId", "period"]),
+
+  // ============================================================================
+  // ANALYTICS TABLE - Usage tracking for feature engagement
+  // ============================================================================
+  analytics: defineTable({
+    event: v.string(), // e.g. "command_use", "button_click", "slash_command", "menu_select"
+    command: v.optional(v.string()), // command name or interaction customId
+    guildId: v.optional(v.string()),
+    userId: v.optional(v.string()),
+    metadata: v.optional(v.any()), // additional context
+    timestamp: v.number(), // Unix timestamp ms
+  })
+    .index("by_event", ["event"])
+    .index("by_timestamp", ["timestamp"])
+    .index("by_event_timestamp", ["event", "timestamp"])
+    .index("by_command_timestamp", ["command", "timestamp"])
+    .index("by_guild_event", ["guildId", "event"]),
 });
