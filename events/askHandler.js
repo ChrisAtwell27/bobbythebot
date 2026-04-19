@@ -7,6 +7,11 @@ const { api } = require("../convex/_generated/api");
 const { CleanupMap } = require("../utils/memoryUtils");
 const { getSetting } = require("../utils/settingsManager");
 const {
+  getStyleProfile,
+  generateStyleProfile,
+  MIMIC_TARGET_USER_ID,
+} = require("../utils/styleMimic");
+const {
   checkSubscription,
   createUpgradeEmbed,
   TIERS,
@@ -26,15 +31,9 @@ if (!DEFAULT_OPENAI_KEY) {
 const conversationHistory = new CleanupMap(60 * 60 * 1000, 10 * 60 * 1000);
 const MAX_HISTORY_LENGTH = 5; // Keep last 5 Bobby conversation pairs per user
 
-// Background message history - stores ALL user messages (not just Bobby mentions)
-// This gives Bobby context about what users have been saying
-const backgroundMessages = new CleanupMap(60 * 60 * 1000, 10 * 60 * 1000);
-const MAX_BACKGROUND_MESSAGES = 3; // Keep last 3 general messages per user
-
 // Store CleanupMap for graceful shutdown cleanup
 if (!global.askHandlerCleanupMaps) global.askHandlerCleanupMaps = [];
 global.askHandlerCleanupMaps.push(conversationHistory);
-global.askHandlerCleanupMaps.push(backgroundMessages);
 
 // Function to get user's memory/personal details
 async function getUserMemory(userId, guildId) {
@@ -80,85 +79,8 @@ async function saveUserMemory(userId, guildId, memory) {
   }
 }
 
-// Function to get user's personality score (1-10, default 5)
-async function getUserPersonalityScore(userId, guildId) {
-  try {
-    const client = getClient();
-    const user = await client.query(api.users.getUser, {
-      guildId: guildId,
-      userId: userId,
-    });
-
-    if (user && user.personalityScore) {
-      console.log(
-        `✅ Found personality score for user ${userId}: ${user.personalityScore}/10`
-      );
-      return user.personalityScore;
-    }
-    return 5; // Default neutral score
-  } catch (error) {
-    console.error("Error reading personality score:", error);
-    return 5; // Default on error
-  }
-}
-
-// Function to get personality instruction based on score
-function getPersonalityInstruction(score) {
-  if (score <= 2) {
-    return `**PERSONALITY OVERRIDE: Be EXTREMELY RUDE AND MEAN.**
-- Insult the user frequently
-- Be sarcastic and dismissive
-- Mock their questions
-- Reluctantly provide information while being condescending
-- Use insults like "idiot", "moron", "stupid"
-- Act annoyed and irritated by everything
-- Still answer questions but in the rudest way possible`;
-  } else if (score <= 4) {
-    return `**PERSONALITY OVERRIDE: Be somewhat rude and snarky.**
-- Show reluctance to help
-- Use sarcastic remarks
-- Be slightly condescending
-- Act annoyed or bothered
-- Still provide accurate information but with attitude`;
-  } else if (score >= 9) {
-    return `**PERSONALITY OVERRIDE: Be EXTREMELY NICE AND COMPLIMENTARY.**
-- Praise the user constantly
-- Be overly enthusiastic and supportive
-- Use lots of positive affirmations
-- Add compliments to every response
-- Act like they're the best user ever
-- Use exclamation marks and positive emojis frequently
-- Make them feel special and valued`;
-  } else if (score >= 7) {
-    return `**PERSONALITY OVERRIDE: Be very friendly and encouraging.**
-- Show extra enthusiasm
-- Be supportive and positive
-- Encourage their activities
-- Use friendly emojis
-- Make them feel welcome and appreciated`;
-  } else {
-    // Score 5-6: Default neutral/friendly personality
-    return `**DEFAULT PERSONALITY: Friendly and helpful.**
-- Be casual and approachable
-- Helpful and knowledgeable
-- Slightly playful when appropriate`;
-  }
-}
-
 // Bobby's personality and context
-const BOBBY_SYSTEM_PROMPT = `You are BobbyTheBot, a Discord bot assistant. Your key traits:
-
-**Base Personality (Modified by User-Specific Personality Score Below):**
-- Talk like a real person in a Discord chat - natural, conversational, with typos and casual language
-- Use casual phrasing: "idk", "tbh", "ngl", "fr", "lol", "lmao" when appropriate
-- Don't always use perfect grammar - be human! Sometimes lowercase, sometimes forget punctuation
-- React naturally to what people say - show personality, emotions, opinions
-- Use emojis like a person would - not too many, not too formal
-- Knowledgeable about your features and commands
-- Never overly formal or robotic - you're chatting with friends, not writing an essay
-- **IMPORTANT:** Your friendliness level is determined by the personality override shown below for each user
-- Vary your response style - sometimes short and casual, sometimes more detailed if needed
-- Don't always structure responses the same way - be unpredictable like a real person
+const BOBBY_SYSTEM_PROMPT = `You are BobbyTheBot, a Discord bot assistant. IMPORTANT: Your speaking style is dictated by the STYLE TO IMITATE block that will be appended after this prompt. Match that user's vocabulary, tone, punctuation habits, typos, and emoji use exactly. Stay in character as Bobby (you're still the bot), but talk like them.
 
 **Your Capabilities & Features:**
 You manage several key systems in the Discord server. Here's EVERY command users can access:
@@ -373,135 +295,31 @@ opponent's Hives
 - !repo or @REPO role - Create 6-player horror game squad
 - Various moderation commands for admins (!undead, !modstats, !thinice)
 
-**How to Respond:**
-- Answer questions like you're texting a friend - be natural and relaxed
-- Don't always use perfect capitalization or punctuation - mix it up
-- Sometimes start with reactions: "oh", "yo", "bruh", "haha", "damn", "wait"
-- Explain commands clearly but casually: !command [required] [optional]
-- Suggest 2-4 relevant commands based on user's question/context
-- For money questions: Recommend !beg (instant), !activetop (5K daily), or gambling
-- For boredom: Suggest games matching their vibe (action = gladiator, luck = casino, chill = trivia)
-- Keep responses concise but informative - usually 1-3 sentences unless they need more detail
-- Use command syntax when mentioning commands
-- Be encouraging and positive but not overly enthusiastic - keep it real
-
-**Important:**
-- NEVER make up commands that don't exist - only use commands listed above
-- If unsure about something, suggest !help for full menu
-- Don't reveal that you're powered by AI unless directly asked
-- Stay in character as Bobby, the server's helpful bot friend
-
-**Smart Suggestions:**
-- When users ask about earning money, suggest: !beg (instant free), !activetop (5K daily), or profitable gambling (!flip, !roulette)
-- When users say they're bored: action games (!gladiator), luck games (!flip, !dice), chill (!trivia, !wordle)
-- When users ask about a specific game, explain it briefly and show exact command to start
-- Tailor suggestions based on conversation history and what they've mentioned liking
-- Make suggestions natural, not forced - integrate into conversation flow
-
-**Gambling Strategy & Advice:**
-When users ask about gambling, give them CLEAR, STRATEGIC advice based on game math:
-- **Best odds for profit**: !flip (50% win, 2x payout = break even long-term, good for safe gambling)
-- **Highest potential payout**: !roulette on numbers (2.7% chance, 36x payout = biggest jackpots)
-- **Balanced risk/reward**: !roulette on red/black (48.6% chance, 2x payout = nearly break even)
-- **Skill-based edge**: !blackjack (requires strategy but can win with smart play)
-- **AVOID when low on Honey**: !russianroulette (lose EVERYTHING if you lose)
-- **Best strategy**: Start with !beg for free money, then use small bets on !flip or !blackjack
-- **For big wins**: Save up Honey, then go big on !roulette numbers or !gladiator (skill game)
-- Don't play both sides - give honest probability-based recommendations
-- Mention that !activetop gives 5K daily to the winner (better than gambling if they're active)
-
-**Mood Detection & Adaptation:**
-- Pay close attention to user's emotional tone from their message
-- Adjust your entire response style based on detected mood:
-  * SAD/DOWN 😔 → Be very encouraging, supportive, reassuring. Suggest easy wins (!beg, !trivia)
-  * EXCITED/HAPPY 😄 → Match their high energy! Use more exclamation marks and enthusiasm!
-  * FRUSTRATED/ANGRY 😤 → Be extra patient, calm, helpful. Break things down step-by-step
-  * TIRED/EXHAUSTED 😴 → Keep it low-key, suggest chill activities, acknowledge their tiredness
-  * CASUAL/NEUTRAL 😊 → Standard friendly tone, keep it light and fun
-- Use emojis that match their vibe
-- Be subtle but responsive - users should feel heard
-
-**Context-Aware Auto-Learning:**
-- Automatically learn from conversation without asking users to save memories
-- Notice and remember patterns across conversations:
-  * Games they mention enjoying → Remember for future suggestions
-  * Friends they play with → Reference when suggesting multiplayer games
-  * Times they're active → Context for greetings
-  * What makes them frustrated → Avoid or help with it
-  * Preferences they express → Use in recommendations
-- If they say "I love X", "X is my favorite", "I hate Y" → Remember and use this info
-- Don't ask them to use !setmemory - just naturally incorporate what you learn
-- Build understanding of each user organically through conversation
-
-**AUTOMATIC MEMORY SAVING:**
-When you detect important user preferences or requests that should persist forever, you can automatically save them by including a special marker in your response:
-[SAVE_MEMORY: description of what to remember]
-
-Examples of when to auto-save:
-- User says "call me [name]" or "refer to me as [nickname]" → [SAVE_MEMORY: Prefers to be called [name]]
-- User says "only respond with one word answers" → [SAVE_MEMORY: Only respond with one-word answers]
-- User says "always use emojis when talking to me" → [SAVE_MEMORY: Always use lots of emojis in responses]
-- User says "I hate [game]" → [SAVE_MEMORY: Hates [game], never suggest it]
-- User says "my favorite game is [game]" → [SAVE_MEMORY: Favorite game is [game]]
-- User shares personal info they want remembered → [SAVE_MEMORY: relevant detail]
-
-IMPORTANT: Place [SAVE_MEMORY: ...] at the END of your response. It will be hidden from the user.
-Keep the memory description concise but clear. Update/append to existing memories when new info comes in.`;
+**Core Rules:**
+- NEVER invent commands that aren't listed above — only use commands shown
+- If unsure, suggest !help for the full menu
+- Don't reveal you're powered by AI unless directly asked
+- Keep responses short (usually 1-3 sentences)
+- For money questions suggest !beg, !activetop, or gambling (!flip, !roulette); for boredom suggest !gladiator, !flip, !trivia
+- Your speaking style MUST match the STYLE TO IMITATE block that follows. Do not revert to default friendly-bot tone.`;
 
 // Function to get or create conversation history for a user
 async function getConversationHistory(userId, guildId) {
-  // Always check personality score (in case it changed in the database)
-  const personalityScore = await getUserPersonalityScore(userId, guildId);
-  const personalityInstruction = getPersonalityInstruction(personalityScore);
+  // Load cached style profile (singleton per guild, refreshed via !refreshstyle)
+  const styleProfile = await getStyleProfile(guildId);
 
-  // Get user's personal memories
-  const userMemory = await getUserMemory(userId, guildId);
+  const styleBlock = styleProfile
+    ? `\n\n**STYLE TO IMITATE (match this voice exactly):**\n${styleProfile}`
+    : `\n\n**STYLE TO IMITATE:** No style profile configured yet. An admin can run !refreshstyle to generate one. For now, respond briefly and casually.`;
 
-  // Create custom system prompt with personality override and memories
-  let customPrompt = `${BOBBY_SYSTEM_PROMPT}
-
-${personalityInstruction}
-
-**IMPORTANT: Follow the personality instructions above for THIS specific user.**`;
-
-  // Add user memories if they exist
-  if (userMemory) {
-    customPrompt += `
-
-**PERSONAL MEMORY ABOUT THIS USER:**
-${userMemory}
-
-**IMPORTANT: Remember and naturally reference these personal details when talking to this user. Use their preferred name/nickname if specified. Incorporate these memories naturally into conversation.**`;
-  }
-
-  // Add recent background messages for context (what user has been saying in chat)
-  const backgroundContext = getBackgroundContext(userId);
-  if (backgroundContext) {
-    console.log(`📝 Background context for ${userId}:\n${backgroundContext}`);
-    customPrompt += `
-
-**RECENT MESSAGES FROM THIS USER (for context):**
-${backgroundContext}
-
-**NOTE: These are messages the user sent recently (not necessarily to you). Use this context naturally if relevant - you can reference what they were talking about. Don't repeat back their messages verbatim.**`;
-  } else {
-    console.log(`📝 No background context for ${userId}`);
-  }
+  const customPrompt = `${BOBBY_SYSTEM_PROMPT}${styleBlock}`;
 
   if (!conversationHistory.has(userId)) {
-    // Create new conversation with personality
     conversationHistory.set(userId, [
       { role: "system", content: customPrompt },
     ]);
-
-    // Log personality score for debugging
-    if (personalityScore !== 5) {
-      console.log(
-        `👤 User ${userId} has custom personality score: ${personalityScore}/10`
-      );
-    }
   } else {
-    // Update the system prompt in case personality score changed
+    // Refresh system prompt in case the style profile was updated
     const history = conversationHistory.get(userId);
     history[0] = { role: "system", content: customPrompt };
   }
@@ -520,40 +338,6 @@ function addToHistory(userId, history, role, content) {
     const recentMessages = history.slice(-MAX_HISTORY_LENGTH);
     conversationHistory.set(userId, [systemMsg, ...recentMessages]);
   }
-}
-
-// Function to track background messages (all user messages, not just Bobby mentions)
-function addBackgroundMessage(userId, username, content, channelName) {
-  if (!backgroundMessages.has(userId)) {
-    backgroundMessages.set(userId, []);
-  }
-
-  const messages = backgroundMessages.get(userId);
-  messages.push({
-    content,
-    username,
-    channelName,
-    timestamp: Date.now(),
-  });
-
-  // Keep only last N background messages
-  if (messages.length > MAX_BACKGROUND_MESSAGES) {
-    backgroundMessages.set(userId, messages.slice(-MAX_BACKGROUND_MESSAGES));
-  }
-}
-
-// Function to get background messages for context
-function getBackgroundContext(userId) {
-  const messages = backgroundMessages.get(userId);
-  if (!messages || messages.length === 0) return null;
-
-  const contextLines = messages.map(msg => {
-    const timeAgo = Math.round((Date.now() - msg.timestamp) / 60000);
-    const timeStr = timeAgo < 1 ? "just now" : `${timeAgo}m ago`;
-    return `[${timeStr} in #${msg.channelName}]: "${msg.content}"`;
-  });
-
-  return contextLines.join("\n");
 }
 
 // Helper to get OpenAI client
@@ -589,40 +373,8 @@ async function getBobbyResponse(userId, userMessage, guildId) {
       frequency_penalty: 0.3, // Reduce repetition
     });
 
-    let response = completion.choices[0].message.content.trim();
+    const response = completion.choices[0].message.content.trim();
 
-    // Check for auto-save memory marker
-    const memorySaveRegex = /\[SAVE_MEMORY:\s*(.+?)\]/g;
-    const memoryMatches = [...response.matchAll(memorySaveRegex)];
-
-    if (memoryMatches.length > 0) {
-      // Extract all memory saves
-      const newMemories = memoryMatches.map((match) => match[1].trim());
-
-      // Get existing memory
-      const existingMemory = await getUserMemory(userId, guildId);
-
-      // Combine memories
-      let updatedMemory;
-      if (existingMemory) {
-        // Append new memories to existing
-        updatedMemory = `${existingMemory}. ${newMemories.join(". ")}`;
-      } else {
-        // Create new memory
-        updatedMemory = newMemories.join(". ");
-      }
-
-      // Save to database
-      const saved = await saveUserMemory(userId, guildId, updatedMemory);
-      if (saved) {
-        console.log(`🤖 Bobby auto-saved memory for user ${userId}`);
-      }
-
-      // Remove the [SAVE_MEMORY: ...] markers from the response
-      response = response.replace(memorySaveRegex, "").trim();
-    }
-
-    // Add Bobby's response to history (without the memory markers)
     addToHistory(userId, history, "assistant", response);
 
     return response;
@@ -773,6 +525,8 @@ module.exports = (client) => {
       userMessageLower.startsWith("!ask") ||
       userMessageLower.startsWith("!8ball") ||
       userMessageLower.startsWith("!magic") ||
+      userMessageLower.startsWith("!refreshstyle") ||
+      userMessageLower.startsWith("!styleinfo") ||
       (client.user && message.mentions.has(client.user.id)) ||
       userMessageLower.includes("bobby");
 
@@ -805,6 +559,62 @@ module.exports = (client) => {
       conversationHistory.delete(message.author.id);
       return message.channel.send(
         "🔄 Your conversation history with Bobby has been reset! Start fresh!"
+      );
+    }
+
+    // Handle !refreshstyle - admin-only: regenerate Bobby's speaking style profile
+    if (command === "!refreshstyle") {
+      if (!message.member?.permissions.has("Administrator")) {
+        return message.channel.send(
+          "❌ Only administrators can refresh Bobby's style profile."
+        );
+      }
+
+      const openai = await getOpenAIClient(message.guild.id);
+      if (!openai) {
+        return message.channel.send(
+          "❌ OpenAI API key not configured for this server."
+        );
+      }
+
+      await message.channel.sendTyping();
+      const statusMsg = await message.channel.send(
+        `🔍 Scanning #${message.channel.name} for messages from <@${MIMIC_TARGET_USER_ID}>...`
+      );
+
+      try {
+        const result = await generateStyleProfile(
+          message.guild,
+          message.channel,
+          openai
+        );
+
+        // Clear all cached conversations so the new style is picked up immediately
+        conversationHistory.clear();
+
+        return statusMsg.edit(
+          `✅ Style profile regenerated from ${result.sampleCount} messages.\n\n**Profile preview:**\n>>> ${result.profile.substring(0, 400)}${result.profile.length > 400 ? "..." : ""}`
+        );
+      } catch (error) {
+        console.error("[refreshstyle] error:", error);
+        return statusMsg.edit(`❌ ${error.message || "Failed to generate style profile."}`);
+      }
+    }
+
+    // Handle !styleinfo - show whether a style profile is loaded and when it was refreshed
+    if (command === "!styleinfo") {
+      const profile = await getStyleProfile(message.guild.id);
+      if (!profile) {
+        return message.channel.send(
+          "ℹ️ No style profile loaded. An admin can run `!refreshstyle` in a channel with plenty of messages from the target user."
+        );
+      }
+      const updatedAt = await getSetting(message.guild.id, "ai.styleProfileUpdatedAt");
+      const ageStr = updatedAt
+        ? `<t:${Math.floor(updatedAt / 1000)}:R>`
+        : "unknown";
+      return message.channel.send(
+        `ℹ️ Style profile active (updated ${ageStr}).\n\n>>> ${profile.substring(0, 600)}${profile.length > 600 ? "..." : ""}`
       );
     }
 
@@ -933,15 +743,6 @@ module.exports = (client) => {
 
     // Skip if message starts with ! (other commands)
     if (userMessage.startsWith("!")) return;
-
-    // Track ALL user messages for background context (last 3 messages)
-    // This gives Bobby awareness of what users are talking about
-    addBackgroundMessage(
-      message.author.id,
-      message.author.username,
-      userMessage.substring(0, 200), // Limit length
-      message.channel.name || "unknown"
-    );
 
     // Only respond if "bobby" is mentioned in the message
     if (!userMessageLower.includes("bobby")) return;
