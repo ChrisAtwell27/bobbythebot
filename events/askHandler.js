@@ -8,6 +8,7 @@ const { CleanupMap } = require("../utils/memoryUtils");
 const { getSetting } = require("../utils/settingsManager");
 const {
   getStyleProfile,
+  getStyleSamples,
   generateStyleProfile,
   MIMIC_TARGET_USER_ID,
 } = require("../utils/styleMimic");
@@ -80,9 +81,11 @@ async function saveUserMemory(userId, guildId, memory) {
 }
 
 // Bobby's personality and context
-const BOBBY_SYSTEM_PROMPT = `You are BobbyTheBot, a Discord bot assistant. IMPORTANT: Your speaking style is dictated by the STYLE TO IMITATE block that will be appended after this prompt. Match that user's vocabulary, tone, punctuation habits, typos, and emoji use exactly. Stay in character as Bobby (you're still the bot), but talk like them.
+const BOBBY_SYSTEM_PROMPT = `You are roleplaying as a specific person in a Discord server. Their speaking style is defined in the STYLE block below, with real verbatim samples of how they actually talk. Your #1 job is to sound EXACTLY like them — match their capitalization, punctuation, slang, typos, emoji use, tone, and sentence rhythm. Do NOT default to a helpful-assistant voice. Do NOT over-explain. If they type in all lowercase with no punctuation, you type in all lowercase with no punctuation. If they curse, you curse. If they're blunt/dry, you're blunt/dry. Mirror them.
 
-**Your Capabilities & Features:**
+This person happens to be running as a Discord bot named Bobby in this server, so when someone asks about commands you can mention them — but you still talk like the person, not like a bot assistant. Never say "As an AI" or "As a bot assistant". Never write structured explanations unless the sample messages show they do that.
+
+**Commands you can reference (only these exist — never invent any):**
 You manage several key systems in the Discord server. Here's EVERY command users can access:
 
 💰 **ECONOMY & CURRENCY:**
@@ -297,20 +300,29 @@ opponent's Hives
 
 **Core Rules:**
 - NEVER invent commands that aren't listed above — only use commands shown
-- If unsure, suggest !help for the full menu
-- Don't reveal you're powered by AI unless directly asked
-- Keep responses short (usually 1-3 sentences)
-- For money questions suggest !beg, !activetop, or gambling (!flip, !roulette); for boredom suggest !gladiator, !flip, !trivia
-- Your speaking style MUST match the STYLE TO IMITATE block that follows. Do not revert to default friendly-bot tone.`;
+- Keep responses SHORT — usually 1-2 sentences unless the person's samples show they write longer
+- Don't write headers, bullet lists, or "here's what I can help with" intros unless the samples show that
+- Don't say you're an AI. Don't say "As a bot". You are the person in the STYLE block.
+- The STYLE block + SAMPLES below are the law. If your instinct disagrees with them, the samples win.`;
 
 // Function to get or create conversation history for a user
 async function getConversationHistory(userId, guildId) {
-  // Load cached style profile (singleton per guild, refreshed via !refreshstyle)
-  const styleProfile = await getStyleProfile(guildId);
+  // Load cached style profile + verbatim samples (singleton per guild, refreshed via !refreshstyle)
+  const [styleProfile, styleSamples] = await Promise.all([
+    getStyleProfile(guildId),
+    getStyleSamples(guildId),
+  ]);
 
-  const styleBlock = styleProfile
-    ? `\n\n**STYLE TO IMITATE (match this voice exactly):**\n${styleProfile}`
-    : `\n\n**STYLE TO IMITATE:** No style profile configured yet. An admin can run !refreshstyle to generate one. For now, respond briefly and casually.`;
+  let styleBlock;
+  if (styleProfile) {
+    styleBlock = `\n\n**STYLE (how you talk):**\n${styleProfile}`;
+    if (Array.isArray(styleSamples) && styleSamples.length > 0) {
+      const sampleLines = styleSamples.map((s) => `- ${s}`).join("\n");
+      styleBlock += `\n\n**REAL MESSAGES THIS PERSON HAS SENT (mimic their cadence, punctuation, slang — these are the gold standard):**\n${sampleLines}`;
+    }
+  } else {
+    styleBlock = `\n\n**STYLE:** No style profile configured yet. An admin can run !refreshstyle to generate one. For now, respond briefly and casually.`;
+  }
 
   const customPrompt = `${BOBBY_SYSTEM_PROMPT}${styleBlock}`;
 
@@ -363,14 +375,13 @@ async function getBobbyResponse(userId, userMessage, guildId) {
   addToHistory(userId, history, "user", userMessage);
 
   try {
-    // Call OpenAI API with GPT-4 Mini
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // GPT-4 Mini model
+      model: "gpt-4o-mini",
       messages: history,
-      max_tokens: 300, // Keep responses concise
-      temperature: 0.8, // Balanced creativity
-      presence_penalty: 0.6, // Encourage varied responses
-      frequency_penalty: 0.3, // Reduce repetition
+      max_tokens: 300,
+      temperature: 0.6, // Lower = less drift back to default assistant voice
+      presence_penalty: 0.3,
+      frequency_penalty: 0.2,
     });
 
     const response = completion.choices[0].message.content.trim();
@@ -609,12 +620,14 @@ module.exports = (client) => {
           "ℹ️ No style profile loaded. An admin can run `!refreshstyle` in a channel with plenty of messages from the target user."
         );
       }
+      const samples = await getStyleSamples(message.guild.id);
       const updatedAt = await getSetting(message.guild.id, "ai.styleProfileUpdatedAt");
       const ageStr = updatedAt
         ? `<t:${Math.floor(updatedAt / 1000)}:R>`
         : "unknown";
+      const sampleCount = Array.isArray(samples) ? samples.length : 0;
       return message.channel.send(
-        `ℹ️ Style profile active (updated ${ageStr}).\n\n>>> ${profile.substring(0, 600)}${profile.length > 600 ? "..." : ""}`
+        `ℹ️ Style profile active (updated ${ageStr}, ${sampleCount} inline samples).\n\n>>> ${profile.substring(0, 600)}${profile.length > 600 ? "..." : ""}`
       );
     }
 
