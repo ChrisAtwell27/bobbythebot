@@ -52,6 +52,34 @@ export const getLeaderboard = query({
 });
 
 /**
+ * Get raw wordle scores across all servers that opted into the global leaderboard
+ * (settings.wordleScope === 'global'). The bot aggregates these per-user.
+ */
+export const getGlobalScores = query({
+  args: {},
+  handler: async (ctx) => {
+    // Find all servers and keep only those opted into the global scope.
+    const servers = await ctx.db.query("servers").collect();
+    const globalGuildIds = servers
+      .filter((s) => s.settings && s.settings.wordleScope === "global")
+      .map((s) => s.guildId);
+
+    if (globalGuildIds.length === 0) return [];
+
+    // Collect every wordleScores row for those guilds.
+    const allScores = [];
+    for (const guildId of globalGuildIds) {
+      const rows = await ctx.db
+        .query("wordleScores")
+        .withIndex("by_guild_and_user", (q) => q.eq("guildId", guildId))
+        .collect();
+      allScores.push(...rows);
+    }
+    return allScores;
+  },
+});
+
+/**
  * Get monthly winner
  */
 export const getMonthlyWinner = query({

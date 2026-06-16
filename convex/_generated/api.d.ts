@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as analytics from "../analytics.js";
 import type * as betting from "../betting.js";
 import type * as bounties from "../bounties.js";
 import type * as challenges from "../challenges.js";
@@ -29,6 +30,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  analytics: typeof analytics;
   betting: typeof betting;
   bounties: typeof bounties;
   challenges: typeof challenges;
