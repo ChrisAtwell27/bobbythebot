@@ -532,5 +532,20 @@ commands.push({
   category: "admin",
 });
 
+// ==========================================
+// DEBUG & SETUP (free-version infrastructure)
+// ==========================================
+const debugCommand = require("./debugCommand");
+commands.push({ data: debugCommand.data, category: "info" });
+
+const setupCommand = require("./setup");
+commands.push({ data: setupCommand.data, category: "utility" });
+
 // Export all commands
-module.exports = commands;
+const { FREE_VERSION, isSlashCommandEnabled } = require("../config/freeVersion");
+
+const exportedCommands = FREE_VERSION
+  ? commands.filter((c) => isSlashCommandEnabled(c.data.name))
+  : commands;
+
+module.exports = exportedCommands;

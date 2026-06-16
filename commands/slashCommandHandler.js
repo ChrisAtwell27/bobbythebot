@@ -14,6 +14,13 @@
 module.exports = (client, interactionRouter) => {
   console.log("⚡ Slash Command Handler initializing...");
 
+  const { isSlashCommandEnabled } = require("../config/freeVersion");
+  const _register = interactionRouter.registerSlashCommand.bind(interactionRouter);
+  interactionRouter.registerSlashCommand = (name, fn) => {
+    if (!isSlashCommandEnabled(name)) return; // skip disabled commands in free build
+    return _register(name, fn);
+  };
+
   // Import existing handlers (they can be reused)
   const eggbuckHandler = require("../events/eggbuckHandler");
   const helpHandler = require("../events/helpHandler");
@@ -354,6 +361,14 @@ module.exports = (client, interactionRouter) => {
     "verification-setup",
     verificationSetup.execute
   );
+
+  // DEBUG COMMAND
+  const debugCommand = require("./debugCommand");
+  interactionRouter.registerSlashCommand("debug", debugCommand.execute);
+
+  // SETUP COMMAND
+  const setupCommand = require("./setup");
+  interactionRouter.registerSlashCommand("setup", setupCommand.execute);
 
   console.log("✅ Slash Command Handler initialized");
   console.log("   Commands are registered and ready to use!");
