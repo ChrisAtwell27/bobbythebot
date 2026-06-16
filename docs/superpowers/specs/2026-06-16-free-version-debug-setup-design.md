@@ -15,6 +15,9 @@ Three related changes to BobbyTheBot:
 3. **In-Discord admin setup** — admin-only slash commands so server admins can
    configure the required channels/roles entirely from within Discord, with no
    external website needed.
+4. **Wordle leaderboard scope** — a per-server admin toggle (`private` default, or
+   `global`) so a server's wordle players can opt into a cross-server global
+   leaderboard, with global stats summed per user across all opted-in servers.
 
 These build on patterns that already exist in the codebase. Nothing is deleted;
 the full paid bot can be restored by flipping a single flag.
@@ -52,8 +55,17 @@ the full paid bot can be restored by flipping a single flag.
 | Logging enabled | `features.audit_logs` (enabled unless `=== false`) | `events/loggingHandler.js:41-43` |
 | Admin roles | `adminRoles` (array of role IDs) | `utils/adminPermissions.js:35` |
 | Verification | managed by existing `/verification-setup` | `commands/verification-setup.js` |
+| Wordle scope | `wordleScope` (`'private'` default, or `'global'`) | new — Part 4 |
 
 > The free version must write to these EXACT keys so setup and runtime agree.
+
+### Wordle data model (verified)
+
+`wordleScores` (Convex, `convex/schema.ts:202-219`) stores one row per `(guildId, userId)`
+with `totalGames`, `totalHoney`, and a `scores` array. All existing leaderboard queries
+filter by `guildId` (`convex/wordle.ts:41-52`), so **leaderboards are already private to
+each server** — there is no global board today. `convex/servers.ts` has `getAllServers`
+(line 39), which Part 4 uses to find servers whose `settings.wordleScope === 'global'`.
 
 ## Part 1 — `/debug` command
 
@@ -192,6 +204,56 @@ Verification keeps its existing dedicated `commands/verification-setup.js` comma
 - All four subcommands and `/debug` and `/help` and `/verification-setup` are added to
   `ENABLED_SLASH_COMMANDS` so they survive the free-version filter.
 
+## Part 4 — Wordle leaderboard scope (private vs global)
+
+### Purpose
+Today every wordle leaderboard is private to its server (all scores filtered by
+`guildId`). This adds a per-server admin choice to opt that server's players into a
+**global** cross-server leaderboard, while leaving the per-server board intact.
+
+### Behavior
+- **Setting:** `wordleScope` per guild — `'private'` (default) or `'global'`. Set via a
+  new `/setup wordle scope <private|global>` subcommand. `/setup wordle status` and
+  `/setup overview` show the current scope.
+- **Private (default):** unchanged — the server's leaderboard shows only that server's
+  players. No scores leave the server.
+- **Global:** the server's players additionally appear on a global leaderboard that
+  aggregates across **all** servers whose `wordleScope === 'global'`.
+- **Viewing:** the existing wordle leaderboard command/output stays per-server. A new
+  global view is exposed (a `global` option on the wordle leaderboard command, or a
+  `/setup wordle status`-adjacent global display) that any user in a global-opted server
+  can see. Implementation detail (option vs separate command) is settled in the plan;
+  the data contract is what matters here.
+
+### Aggregation rule (decided)
+A user's global stats = the **sum** of their `totalGames` and `totalHoney` across every
+global-opted-in server they play in. Ranking is by summed `totalHoney` (the existing
+leaderboard's ranking currency), descending. The same `userId` appearing in multiple
+opted-in servers is collapsed into one global row by summing.
+
+### Data flow
+1. New Convex query `getGlobalLeaderboard(limit)` in `convex/wordle.ts`:
+   - Calls `getAllServers`, filters to those with `settings.wordleScope === 'global'`.
+   - For each such `guildId`, reads its `wordleScores` rows.
+   - Reduces into a `Map<userId, { totalGames, totalHoney }>` by summing.
+   - Returns the top `limit` users by `totalHoney` desc.
+2. Bot side: a helper in `convexApiHelper.js`/`wordleHandler.js` calls the query and
+   formats the global embed (reusing the existing per-server leaderboard formatting,
+   labelled "🌍 Global").
+
+### Privacy & edge cases
+- Switching a server from `global` back to `private` immediately removes it from the
+  global aggregation on the next query (no historical leakage — the query is live).
+- A server with scope unset is treated as `private`.
+- Username display on the global board: resolve via the bot's user cache where possible;
+  fall back to the stored display name or `userId` if the user isn't reachable
+  cross-server (the bot may not share every guild with every global user).
+
+### Scope note
+This is a small, self-contained addition to the wordle subsystem and the `/setup`
+command. It does not interact with the free-version gating beyond `/setup wordle scope`
+living under the already-enabled `/setup` command.
+
 ## Components and boundaries
 
 | Unit | Responsibility | Depends on |
@@ -202,6 +264,8 @@ Verification keeps its existing dedicated `commands/verification-setup.js` comma
 | `/debug` handler | Format + reply with debug info, admin-gated | `debugInfo`, `adminPermissions` |
 | `handlerRegistry` gate | Skip non-allow-listed handlers | `freeVersion` |
 | builder/handler gate | Hide + unregister non-allow-listed slash commands | `freeVersion` |
+| `getGlobalLeaderboard` query | Aggregate wordle scores across global-opted servers | `convex` `getAllServers`, `wordleScores` |
+| `/setup wordle scope` | Set `wordleScope` per guild | `settingsManager` |
 
 ## Error handling
 - `/debug`: every external/fragile call (public IP fetch, git commit) is wrapped in
@@ -221,6 +285,9 @@ Verification keeps its existing dedicated `commands/verification-setup.js` comma
   silent; `/setup wordle` then a wordle results message in that channel is tracked;
   `/setup logging` then a deleted message is logged; `/setup admin-roles add` lets a
   non-admin role use `/setup`.
+- Manual/integration (Part 4): set `/setup wordle scope global` in two servers, play in
+  both as the same user, confirm the global board sums their totals; set one back to
+  `private` and confirm it drops out of the global board.
 
 ## Out of scope
 - Deleting subscription code or paid handlers (kept for reversibility).
