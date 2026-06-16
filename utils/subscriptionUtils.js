@@ -201,6 +201,14 @@ async function getSubscriptionByOwner(ownerId, forceRefresh = false) {
  * @returns {Promise<Object>} - { hasAccess: boolean, guildTier: string, subscription: Object|null }
  */
 async function checkSubscription(guildId, requiredTier = TIERS.FREE, ownerId = null) {
+    // Free version: subscriptions are removed. Always grant access so no
+    // upgrade popup is ever shown. (Reversible: this block is a no-op when
+    // FREE_VERSION=false, restoring the original tier gating below.)
+    const { FREE_VERSION } = require("../config/freeVersion");
+    if (FREE_VERSION) {
+        return { hasAccess: true, guildTier: TIERS.ULTIMATE, subscription: null };
+    }
+
     // Normalize the required tier
     const normalizedRequired = normalizeTier(requiredTier);
 
@@ -303,12 +311,23 @@ function createUpgradeEmbed(featureName, requiredTier, guildTier = TIERS.FREE) {
         [TIERS.ULTIMATE]: 'Ultimate'
     };
 
+    // Free version: never show a subscription upsell or external link. With the
+    // FREE_VERSION short-circuit in checkSubscription(), this embed is effectively
+    // never produced; this only guards any stray direct caller.
+    const { FREE_VERSION } = require("../config/freeVersion");
+
     const embed = new EmbedBuilder()
         .setColor(tierColors[normalizedRequired] || 0x3498DB)
-        .setTitle(`${tierEmojis[normalizedRequired]} Feature Unavailable`)
+        .setTitle(
+            FREE_VERSION
+                ? 'ℹ️ Feature Not Available'
+                : `${tierEmojis[normalizedRequired]} Feature Unavailable`
+        )
         .setDescription(
-            `**${featureName}** requires the **${tierNames[normalizedRequired]}** tier.\n\n` +
-            `[Upgrade your subscription](https://crackedgames.co/bobby-the-bot) to unlock this feature!`
+            FREE_VERSION
+                ? `**${featureName}** is not available on this bot.`
+                : `**${featureName}** requires the **${tierNames[normalizedRequired]}** tier.\n\n` +
+                  `[Upgrade your subscription](https://crackedgames.co/bobby-the-bot) to unlock this feature!`
         )
         .setTimestamp();
 

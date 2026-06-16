@@ -57,12 +57,7 @@ module.exports = (client) => {
                             .addFields(
                                 {
                                     name: '⚙️ Quick Setup',
-                                    value: 'Run `!setupbobby` in your server to configure Bobby through our web dashboard!',
-                                    inline: false
-                                },
-                                {
-                                    name: '🔗 Dashboard',
-                                    value: '**[crackedgames.co/bobby-the-bot](https://crackedgames.co/bobby-the-bot)**',
+                                    value: 'Run `/setup overview` in your server to see what to configure, then `/setup wordle channel` and `/setup logging channel` to get started!',
                                     inline: false
                                 },
                                 {
@@ -118,12 +113,7 @@ module.exports = (client) => {
                         .addFields(
                             {
                                 name: '⚙️ Quick Setup',
-                                value: 'Run `!setupbobby` in your server to configure Bobby through our web dashboard!',
-                                inline: false
-                            },
-                            {
-                                name: '🔗 Dashboard',
-                                value: '**[crackedgames.co/bobby-the-bot](https://crackedgames.co/bobby-the-bot)**',
+                                value: 'Run `/setup overview` in your server to see what to configure, then `/setup wordle channel` and `/setup logging channel` to get started!',
                                 inline: false
                             },
                             {
