@@ -35,6 +35,21 @@ module.exports = {
         .addSubcommand((s) =>
           s.setName("status").setDescription("Show the current wordle channel")
         )
+        .addSubcommand((s) =>
+          s
+            .setName("scope")
+            .setDescription("Set whether this server's wordle board is private or global")
+            .addStringOption((o) =>
+              o
+                .setName("scope")
+                .setDescription("private = this server only; global = cross-server")
+                .setRequired(true)
+                .addChoices(
+                  { name: "private (this server only)", value: "private" },
+                  { name: "global (cross-server leaderboard)", value: "global" }
+                )
+            )
+        )
     )
     .addSubcommandGroup((g) =>
       g
@@ -138,12 +153,26 @@ async function handleWordle(interaction, guildId, sub) {
         : "❌ Failed to save the wordle channel.",
     });
   }
+  if (sub === "scope") {
+    const scope = interaction.options.getString("scope"); // 'private' | 'global'
+    await setSetting(guildId, "wordleScope", scope);
+    invalidateCache(guildId);
+    return interaction.editReply({
+      content:
+        scope === "global"
+          ? "🌍 Wordle leaderboard is now **global** — this server's players appear on the cross-server board (`!wordleglobal`)."
+          : "🔒 Wordle leaderboard is now **private** — only this server's players are shown.",
+    });
+  }
   // status
   const current = await getSetting(guildId, "channels.wordle");
+  const scope = (await getSetting(guildId, "wordleScope")) || "private";
   return interaction.editReply({
-    content: current
-      ? `📍 Wordle channel: <#${current}>`
-      : "⚠️ No wordle channel set. Use `/setup wordle channel`.",
+    content:
+      (current
+        ? `📍 Wordle channel: <#${current}>`
+        : "⚠️ No wordle channel set. Use `/setup wordle channel`.") +
+      `\n🔭 Scope: **${scope}**`,
   });
 }
 
@@ -207,6 +236,7 @@ async function handleAdminRoles(interaction, guildId, sub) {
 
 async function handleOverview(interaction, guildId) {
   const wordleCh = await getSetting(guildId, "channels.wordle");
+  const wordleScope = (await getSetting(guildId, "wordleScope")) || "private";
   const logCh = await getSetting(guildId, "loggingChannelId");
   const logOn = (await getSetting(guildId, "features.audit_logs")) !== false;
   const adminRoles = (await getSetting(guildId, "adminRoles", [])) || [];
@@ -219,7 +249,9 @@ async function handleOverview(interaction, guildId) {
     .addFields(
       {
         name: "🟩 Wordle channel",
-        value: wordleCh ? `<#${wordleCh}>` : "⚠️ not set — `/setup wordle channel`",
+        value:
+          (wordleCh ? `<#${wordleCh}>` : "⚠️ not set — `/setup wordle channel`") +
+          ` • scope: **${wordleScope}**`,
       },
       {
         name: "📊 Audit logging",

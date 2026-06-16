@@ -695,6 +695,46 @@ async function calculateStats(guildId, timeFilter = null) {
   }
 }
 
+// Calculate global leaderboard statistics by summing each user's scores across all
+// global-opted servers. Reuses the same weighting as calculateStats
+// (avgScore * (50 / games)^0.7, lower is better).
+async function calculateGlobalStats() {
+  try {
+    const client = getConvexClient();
+    if (!client) return {};
+
+    const allRows = await client.query(api.wordle.getGlobalScores, {});
+    // Merge rows by userId (a user may appear in several global servers).
+    const byUser = {};
+    for (const row of allRows) {
+      if (!byUser[row.userId]) byUser[row.userId] = [];
+      byUser[row.userId].push(...row.scores);
+    }
+
+    const result = {};
+    for (const [userId, scores] of Object.entries(byUser)) {
+      if (scores.length === 0) continue;
+      const scoreValues = scores.map((s) => s.score);
+      const totalScore = scoreValues.reduce((sum, s) => sum + s, 0);
+      const bestScore = Math.min(...scoreValues);
+      const avgScore = totalScore / scores.length;
+      const totalGames = scores.length;
+      const weightedScore = avgScore * Math.pow(50 / totalGames, 0.7);
+      result[userId] = {
+        avgScore,
+        bestScore,
+        totalGames,
+        weightedScore,
+        totalHoney: scores.reduce((sum, s) => sum + (s.honeyAwarded || 0), 0),
+      };
+    }
+    return result;
+  } catch (error) {
+    console.error("[WORDLE] Error calculating global stats:", error);
+    return {};
+  }
+}
+
 // Check for users who played 2 days ago but haven't played since, and send a reminder
 async function checkAndSendReminders(channel) {
   try {
@@ -992,6 +1032,64 @@ module.exports = (client) => {
         )
         .setFooter({
           text: "Rankings favor consistency and volume. Play more to climb! 🟩",
+        })
+        .setTimestamp();
+
+      await message.channel.send({ embeds: [embed] });
+    }
+
+    // Handle !wordleglobal command (cross-server leaderboard)
+    if (message.content.toLowerCase() === "!wordleglobal") {
+      const stats = await calculateGlobalStats();
+      if (Object.keys(stats).length === 0) {
+        return await message.channel.send(
+          "No servers have opted into the global leaderboard yet! An admin can enable it with `/setup wordle scope global`."
+        );
+      }
+
+      const sortedUsers = Object.entries(stats).sort(
+        (a, b) => a[1].weightedScore - b[1].weightedScore
+      );
+
+      const { EmbedBuilder } = require("discord.js");
+      let leaderboardText = "";
+      const topTen = sortedUsers.slice(0, 10);
+
+      for (let i = 0; i < topTen.length; i++) {
+        const [userId, userStats] = topTen[i];
+        // Cross-server: resolve from the global user cache, fall back to id.
+        const cachedUser = message.client.users.cache.get(userId);
+        let username = cachedUser ? cachedUser.username : null;
+        if (!username) {
+          try {
+            const fetched = await message.client.users.fetch(userId);
+            username = fetched.username;
+          } catch (_) {
+            username = `User ${userId}`;
+          }
+        }
+
+        let medal;
+        if (i === 0) medal = "🥇";
+        else if (i === 1) medal = "🥈";
+        else if (i === 2) medal = "🥉";
+        else medal = `**${i + 1}.**`;
+
+        leaderboardText += `${medal} **${username}**\n`;
+        leaderboardText += `└ Avg: **${userStats.avgScore.toFixed(2)}** | Games: **${userStats.totalGames}** | Best: **${userStats.bestScore}/6**\n\n`;
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle("🌍 Global Wordle Leaderboard")
+        .setColor("#6aaa64")
+        .setDescription(leaderboardText.trim())
+        .addFields({
+          name: "📊 Total Players (global)",
+          value: `${Object.keys(stats).length}`,
+          inline: true,
+        })
+        .setFooter({
+          text: "Combines all servers that opted in via /setup wordle scope global.",
         })
         .setTimestamp();
 
