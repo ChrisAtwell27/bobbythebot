@@ -43,7 +43,7 @@ Change the `scripts.test` line from the stub to run Node's built-in test runner 
 ```json
   "scripts": {
     "start": "node index.js",
-    "test": "node --test tests/"
+    "test": "node --test \"tests/**/*.test.js\""
   },
 ```
 
