@@ -541,11 +541,7 @@ commands.push({ data: debugCommand.data, category: "info" });
 const setupCommand = require("./setup");
 commands.push({ data: setupCommand.data, category: "utility" });
 
-// Export all commands
-const { FREE_VERSION, isSlashCommandEnabled } = require("../config/freeVersion");
-
-const exportedCommands = FREE_VERSION
-  ? commands.filter((c) => isSlashCommandEnabled(c.data.name))
-  : commands;
-
-module.exports = exportedCommands;
+// Export all commands. Per-server model: every command is deployed to Discord;
+// the interaction router gates execution per guild (free servers only run
+// free-tier commands). No build-time filtering.
+module.exports = commands;

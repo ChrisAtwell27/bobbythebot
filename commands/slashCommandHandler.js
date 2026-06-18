@@ -14,12 +14,9 @@
 module.exports = (client, interactionRouter) => {
   console.log("⚡ Slash Command Handler initializing...");
 
-  const { isSlashCommandEnabled } = require("../config/freeVersion");
-  const _register = interactionRouter.registerSlashCommand.bind(interactionRouter);
-  interactionRouter.registerSlashCommand = (name, fn) => {
-    if (!isSlashCommandEnabled(name)) return; // skip disabled commands in free build
-    return _register(name, fn);
-  };
+  // Per-server model: ALL slash commands register here. The interaction router
+  // gates them per guild at execution time (free servers only run free-tier
+  // commands via isSlashCommandAllowedInGuild). No registration-time filtering.
 
   // Import existing handlers (they can be reused)
   const eggbuckHandler = require("../events/eggbuckHandler");

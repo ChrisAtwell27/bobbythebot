@@ -9,11 +9,14 @@
  */
 
 const { trackEvent } = require('../utils/analytics');
+const { isFeatureAllowedInGuild } = require('../config/freeVersion');
 
 // Command handlers map (!command based)
 const commandHandlers = new Map();
 
-// Message processors that need to see all messages
+// Message processors that need to see all messages.
+// Each entry: { processor, featureKey }. featureKey gates the processor per
+// guild (free servers only run free-tier features); a null featureKey always runs.
 const messageProcessors = [];
 
 module.exports = (client) => {
@@ -26,9 +29,15 @@ module.exports = (client) => {
 
     // First, run message processors (these need to see all messages)
     // Examples: alertHandler (keyword monitoring), thinIceHandler (profanity check)
-    for (const processor of messageProcessors) {
+    const guildId = message.guild?.id;
+    for (const entry of messageProcessors) {
+      // Per-guild gating: skip a feature-tagged processor when the feature is
+      // not allowed in this guild (free servers run only free-tier features).
+      if (entry.featureKey && !isFeatureAllowedInGuild(entry.featureKey, guildId)) {
+        continue;
+      }
       try {
-        await processor(message);
+        await entry.processor(message);
       } catch (error) {
         console.error(`Error in message processor:`, error);
       }
@@ -102,8 +111,8 @@ module.exports = (client) => {
      * Use this for handlers like alertHandler that monitor for keywords
      * @param {function} processor - Processor function (message) => Promise<void>
      */
-    registerMessageProcessor: (processor) => {
-      messageProcessors.push(processor);
+    registerMessageProcessor: (processor, featureKey = null) => {
+      messageProcessors.push({ processor, featureKey });
     },
 
     /**

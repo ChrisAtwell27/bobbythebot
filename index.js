@@ -271,11 +271,6 @@ console.log(
   "[INIT] ✅ All handlers registered with centralized routers (97% CPU reduction)"
 );
 
-// Free version: skip the paid-feature API servers (mafia webhook, subscription).
-// The settings API and the security/verification system stay on. Also avoids a
-// null deref since mafiaHandler is null in the free build.
-const { FREE_VERSION } = require("./config/freeVersion");
-
 // Create HTTP server that proxies webhook API requests
 // This starts IMMEDIATELY so App Platform health checks pass
 const PORT = process.env.PORT || 8080;
@@ -403,7 +398,7 @@ server.on("error", (error) => {
 
 // Initialize Mafia Webhook API server on port 3001 (internal only)
 let mafiaWebhookServer = null;
-if (!FREE_VERSION && process.env.MAFIA_WEBHOOK_ENABLED !== "false") {
+if (process.env.MAFIA_WEBHOOK_ENABLED !== "false") {
   const MafiaWebhookServer = require("./api/mafiaWebhookServer");
   const webhookPort = process.env.MAFIA_WEBHOOK_PORT || 3001;
 
@@ -423,7 +418,7 @@ if (!FREE_VERSION && process.env.MAFIA_WEBHOOK_ENABLED !== "false") {
 
 // Initialize Subscription Verification API server on port 3002
 let subscriptionServer = null;
-if (!FREE_VERSION && process.env.SUBSCRIPTION_API_ENABLED !== "false") {
+if (process.env.SUBSCRIPTION_API_ENABLED !== "false") {
   const SubscriptionServer = require("./api/subscriptionServer");
   const subscriptionPort = process.env.SUBSCRIPTION_API_PORT || 3002;
 

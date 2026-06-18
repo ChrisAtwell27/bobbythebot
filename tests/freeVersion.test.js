@@ -1,33 +1,57 @@
 const { test } = require("node:test");
 const assert = require("node:assert");
 
-// Force free mode ON for this test process before requiring the module.
-process.env.FREE_VERSION = "true";
 const fv = require("../config/freeVersion");
 
-test("FREE_VERSION is on when env is 'true'", () => {
-  assert.strictEqual(fv.FREE_VERSION, true);
+const FULL_GUILD = "701308904877064193"; // main server — gets everything
+const OTHER_GUILD = "999999999999999999"; // any other server — free tier
+
+test("FULL_SERVER_IDS includes the main server", () => {
+  assert.ok(fv.FULL_SERVER_IDS.has(FULL_GUILD));
 });
 
-test("isHandlerEnabled allows allow-listed handlers", () => {
-  assert.strictEqual(fv.isHandlerEnabled("wordle"), true);
-  assert.strictEqual(fv.isHandlerEnabled("verification"), true);
-  assert.strictEqual(fv.isHandlerEnabled("logging"), true);
-  assert.strictEqual(fv.isHandlerEnabled("moderation"), true);
+test("isFullServer is true only for allow-listed guilds", () => {
+  assert.strictEqual(fv.isFullServer(FULL_GUILD), true);
+  assert.strictEqual(fv.isFullServer(OTHER_GUILD), false);
+  assert.strictEqual(fv.isFullServer(null), false);
+  assert.strictEqual(fv.isFullServer(undefined), false);
 });
 
-test("isHandlerEnabled blocks non-allow-listed handlers when free", () => {
-  assert.strictEqual(fv.isHandlerEnabled("blackjack"), false);
-  assert.strictEqual(fv.isHandlerEnabled("mafia"), false);
-  assert.strictEqual(fv.isHandlerEnabled("trivia"), false);
-  assert.strictEqual(fv.isHandlerEnabled("eggbuck"), false);
+test("full servers get EVERY feature", () => {
+  assert.strictEqual(fv.isFeatureAllowedInGuild("ask", FULL_GUILD), true);
+  assert.strictEqual(fv.isFeatureAllowedInGuild("blackjack", FULL_GUILD), true);
+  assert.strictEqual(fv.isFeatureAllowedInGuild("mafia", FULL_GUILD), true);
+  assert.strictEqual(fv.isFeatureAllowedInGuild("wordle", FULL_GUILD), true);
 });
 
-test("isSlashCommandEnabled honors the slash allow-list when free", () => {
-  assert.strictEqual(fv.isSlashCommandEnabled("debug"), true);
-  assert.strictEqual(fv.isSlashCommandEnabled("setup"), true);
-  assert.strictEqual(fv.isSlashCommandEnabled("help"), true);
-  assert.strictEqual(fv.isSlashCommandEnabled("verification-setup"), true);
-  assert.strictEqual(fv.isSlashCommandEnabled("balance"), false);
-  assert.strictEqual(fv.isSlashCommandEnabled("blackjack"), false);
+test("free servers get only security + wordle + infra features", () => {
+  // allowed-everywhere features
+  assert.strictEqual(fv.isFeatureAllowedInGuild("wordle", OTHER_GUILD), true);
+  assert.strictEqual(fv.isFeatureAllowedInGuild("logging", OTHER_GUILD), true);
+  assert.strictEqual(fv.isFeatureAllowedInGuild("moderation", OTHER_GUILD), true);
+  assert.strictEqual(fv.isFeatureAllowedInGuild("verification", OTHER_GUILD), true);
+  assert.strictEqual(fv.isFeatureAllowedInGuild("help", OTHER_GUILD), true);
+  // blocked-on-free features
+  assert.strictEqual(fv.isFeatureAllowedInGuild("ask", OTHER_GUILD), false);
+  assert.strictEqual(fv.isFeatureAllowedInGuild("blackjack", OTHER_GUILD), false);
+  assert.strictEqual(fv.isFeatureAllowedInGuild("mafia", OTHER_GUILD), false);
+  assert.strictEqual(fv.isFeatureAllowedInGuild("eggbuck", OTHER_GUILD), false);
+});
+
+test("no guild id (DMs) is treated as free (security/wordle only)", () => {
+  assert.strictEqual(fv.isFeatureAllowedInGuild("wordle", null), true);
+  assert.strictEqual(fv.isFeatureAllowedInGuild("blackjack", null), false);
+});
+
+test("an undefined/unknown feature key is treated as a non-free extra", () => {
+  // Unknown keys are NOT in the free allow-list, so blocked on free guilds...
+  assert.strictEqual(fv.isFeatureAllowedInGuild("somethingNew", OTHER_GUILD), false);
+  // ...but still allowed on full servers.
+  assert.strictEqual(fv.isFeatureAllowedInGuild("somethingNew", FULL_GUILD), true);
+});
+
+test("FREE_FEATURES contains the security + wordle + infra keys", () => {
+  for (const key of ["verification", "moderation", "logging", "wordle", "help", "guildJoin"]) {
+    assert.ok(fv.FREE_FEATURES.has(key), `FREE_FEATURES missing ${key}`);
+  }
 });
