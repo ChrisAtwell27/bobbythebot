@@ -14,13 +14,6 @@ const {
 module.exports = (client, commandRouter, interactionRouter) => {
   console.log("📋 Registering handlers with centralized routers...");
 
-  // Free version gating: when FREE_VERSION is on, only the allow-listed
-  // security + wordle + infra handlers load. `loadExtras` is false in the free
-  // build, so every non-allow-listed feature block below is skipped. Nothing is
-  // deleted — set FREE_VERSION=false to restore the full paid bot.
-  const { isHandlerEnabled } = require("../config/freeVersion");
-  const loadExtras = isHandlerEnabled("eggbuck"); // any non-allow-listed key → false when free
-
   // Initialize slash command handler (integrates with interaction router)
   require("../commands/slashCommandHandler")(client, interactionRouter);
 
@@ -30,76 +23,64 @@ module.exports = (client, commandRouter, interactionRouter) => {
   // ==========================================
 
   // Message reaction handler - monitors reactions
-  if (loadExtras) {
-    require("./messageReactionHandler")(client);
-  }
+  require("./messageReactionHandler")(client);
 
-  // Logging handler - monitors message delete/update, bans (security suite)
-  if (isHandlerEnabled("logging")) {
-    require("./loggingHandler")(client, loggingChannelId);
-  }
+  // Logging handler - monitors message delete/update, bans
+  require("./loggingHandler")(client, loggingChannelId);
 
   // Member count handler - monitors member joins, voice state updates
-  if (loadExtras) {
-    require("./memberCountHandler")(client);
-  }
+  require("./memberCountHandler")(client);
 
   // Booster role handler - monitors member/role updates, voice state
-  if (loadExtras) {
-    require("./boosterRoleHandler")(client);
-  }
+  require("./boosterRoleHandler")(client);
 
   // Changelog handler - special initialization
-  if (loadExtras) {
-    require("./changelogHandler")(client, changelogChannelId);
-  }
+  require("./changelogHandler")(client, changelogChannelId);
 
   // Birthday handler
-  if (loadExtras) {
-    require("./birthdayHandler")(client);
-  }
+  require("./birthdayHandler")(client);
 
   // Wordle handler - needs its own listener to receive bot messages
-  if (isHandlerEnabled("wordle")) {
-    require("./wordleHandler")(client);
-  }
+  require("./wordleHandler")(client);
 
   // Bump handler - needs its own listener to receive bot messages from DISBOARD
-  if (loadExtras) {
-    require("./bumpHandler")(client);
-  }
+  require("./bumpHandler")(client);
 
   // Guild join handler - monitors guildCreate/guildDelete for guild registration
-  if (isHandlerEnabled("guildJoin")) {
-    require("./guildJoinHandler")(client);
-  }
+  require("./guildJoinHandler")(client);
 
   // Setup reminder handler - periodically DMs owners of unconfigured servers
-  if (loadExtras) {
-    require("./setupReminderHandler")(client);
-  }
+  require("./setupReminderHandler")(client);
 
 
   // Vote reminder handler - weekly reminders to vote on top.gg
-  if (loadExtras) {
-    require("./voteReminderHandler")(client);
-  }
+  require("./voteReminderHandler")(client);
 
   // Betting handler - custom betting pools with button/modal interactions
-  if (loadExtras) {
-    const bettingHandler = require("./bettingHandler");
-    const bettingWrapper = createHandlerWrapper(client, () => bettingHandler);
-    if (bettingWrapper.messageHandler) {
-      commandRouter.registerMessageProcessor(bettingWrapper.messageHandler);
-    }
-    if (bettingWrapper.interactionHandler) {
-      interactionRouter.registerButton("bet_", bettingWrapper.interactionHandler);
-      interactionRouter.registerModal("bet_", bettingWrapper.interactionHandler);
-      interactionRouter.registerSelectMenu(
-        "bet_",
-        bettingWrapper.interactionHandler
-      );
-    }
+  const bettingHandler = require("./bettingHandler");
+  const bettingWrapper = createHandlerWrapper(client, () => bettingHandler);
+  if (bettingWrapper.messageHandler) {
+    commandRouter.registerMessageProcessor(
+      bettingWrapper.messageHandler,
+      "betting"
+    );
+  }
+  if (bettingWrapper.interactionHandler) {
+    interactionRouter.registerButton(
+      "bet_",
+      bettingWrapper.interactionHandler,
+      "betting"
+    );
+    interactionRouter.registerModal(
+      "bet_",
+      bettingWrapper.interactionHandler,
+      "betting"
+    );
+    interactionRouter.registerSelectMenu(
+      "bet_",
+      bettingWrapper.interactionHandler,
+      "betting"
+    );
   }
 
   // ==========================================
@@ -107,32 +88,30 @@ module.exports = (client, commandRouter, interactionRouter) => {
   // (These need to see ALL messages, not just commands)
   // ==========================================
 
-  if (loadExtras) {
-    // Alert handler - monitors for keywords in all messages
-    const alertHandler = require("./alertHandler");
-    const alertProcessor = createMessageProcessor(
-      client,
-      alertHandler,
-      alertKeywords,
-      alertChannelId
-    );
-    if (alertProcessor) {
-      commandRouter.registerMessageProcessor(alertProcessor);
-    }
+  // Alert handler - monitors for keywords in all messages
+  const alertHandler = require("./alertHandler");
+  const alertProcessor = createMessageProcessor(
+    client,
+    alertHandler,
+    alertKeywords,
+    alertChannelId
+  );
+  if (alertProcessor) {
+    commandRouter.registerMessageProcessor(alertProcessor, "alert");
+  }
 
-    // Thin ice handler - monitors for profanity in messages containing "bobby"
-    const thinIceHandler = require("./thinIceHandler");
-    const thinIceProcessor = createMessageProcessor(client, thinIceHandler);
-    if (thinIceProcessor) {
-      commandRouter.registerMessageProcessor(thinIceProcessor);
-    }
+  // Thin ice handler - monitors for profanity in messages containing "bobby"
+  const thinIceHandler = require("./thinIceHandler");
+  const thinIceProcessor = createMessageProcessor(client, thinIceHandler);
+  if (thinIceProcessor) {
+    commandRouter.registerMessageProcessor(thinIceProcessor, "thinIce");
+  }
 
-    // Ask handler - responds when messages contain "bobby" (includes AI chat + command suggestions)
-    const askHandler = require("./askHandler");
-    const askProcessor = createMessageProcessor(client, askHandler);
-    if (askProcessor) {
-      commandRouter.registerMessageProcessor(askProcessor);
-    }
+  // Ask handler - responds when messages contain "bobby" (includes AI chat + command suggestions)
+  const askHandler = require("./askHandler");
+  const askProcessor = createMessageProcessor(client, askHandler);
+  if (askProcessor) {
+    commandRouter.registerMessageProcessor(askProcessor, "ask");
   }
 
   // Note: interactionHandler.js removed - askHandler already handles Bobby mentions with AI
@@ -143,354 +122,406 @@ module.exports = (client, commandRouter, interactionRouter) => {
   // (These respond to specific ! commands)
   // ==========================================
 
-  // Help handler - !help, !commands, !cmdlist, !commandlist (infrastructure)
-  if (isHandlerEnabled("help")) {
-    const helpHandler = require("./helpHandler");
-    const helpWrapper = createHandlerWrapper(client, () => helpHandler);
-    if (helpWrapper.messageHandler) {
-      commandRouter.registerMessageProcessor(helpWrapper.messageHandler);
-    }
-    if (helpWrapper.interactionHandler) {
-      interactionRouter.registerSelectMenu(
-        "help_category_",
-        helpWrapper.interactionHandler
-      );
-    }
+  // Help handler - !help, !commands, !cmdlist, !commandlist
+  const helpHandler = require("./helpHandler");
+  const helpWrapper = createHandlerWrapper(client, () => helpHandler);
+  if (helpWrapper.messageHandler) {
+    commandRouter.registerMessageProcessor(helpWrapper.messageHandler, "help");
   }
-
-  if (loadExtras) {
-    // Valorant rank role handler - !setrankroles, !rankroles, etc.
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./valorantRankRoleHandler"
-    );
-
-    // Debug emoji handler - !emojis, !testemoji
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./debugEmojiHandler"
-    );
-
-    // Eggbuck handler - !balance, !beg, !give, etc. (with donation button interactions)
-    const eggbuckHandler = require("./eggbuckHandler");
-    const eggbuckWrapper = createHandlerWrapper(client, () => eggbuckHandler);
-    if (eggbuckWrapper.messageHandler) {
-      commandRouter.registerMessageProcessor(eggbuckWrapper.messageHandler);
-    }
-    if (eggbuckWrapper.interactionHandler) {
-      // Register donate button handler (donate_userId_messageId)
-      interactionRouter.registerButton(
-        "donate_",
-        eggbuckWrapper.interactionHandler
-      );
-      // Register confirm/cancel buttons for clearhoney command
-      interactionRouter.registerButton(
-        "confirm_reset_",
-        eggbuckWrapper.interactionHandler
-      );
-      interactionRouter.registerButton(
-        "cancel_reset_",
-        eggbuckWrapper.interactionHandler
-      );
-    }
-
-    // Gambling handler - !flip, !roulette, !dice, !slots
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./gamblingHandler"
-    );
-
-    // Blackjack handler - !blackjack, !bj, !hit, !stand
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./blackjackHandler"
-    );
-
-    // Baccarat handler - !baccarat
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./baccaratHandler"
-    );
-
-    // Plinko handler - !plinko
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./plinkoHandler"
-    );
-
-    // Crash handler - !crash (with button interactions for cash-out selection)
-    const crashHandler = require("./crashHandler");
-    const crashWrapper = createHandlerWrapper(client, () => crashHandler);
-    if (crashWrapper.messageHandler) {
-      commandRouter.registerMessageProcessor(crashWrapper.messageHandler);
-    }
-    if (crashWrapper.interactionHandler) {
-      interactionRouter.registerButton("crash_", crashWrapper.interactionHandler);
-    }
-
-    // Clip handler - !submitclip, !clips
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./clipHandler"
-    );
-
-    // Valorant team handler - !team, !createteam
-    const valorantTeamHandler = require("./valorantTeamHandler");
-    const valorantTeamWrapper = createHandlerWrapper(
-      client,
-      () => valorantTeamHandler
-    );
-    if (valorantTeamWrapper.messageHandler) {
-      commandRouter.registerMessageProcessor(valorantTeamWrapper.messageHandler);
-    }
-    if (valorantTeamWrapper.interactionHandler) {
-      interactionRouter.registerButton(
-        "valorant_",
-        valorantTeamWrapper.interactionHandler
-      );
-      interactionRouter.registerModal(
-        "valorant_",
-        valorantTeamWrapper.interactionHandler
-      );
-      interactionRouter.registerSelectMenu(
-        "valorant_",
-        valorantTeamWrapper.interactionHandler
-      );
-    }
-
-    // RaW Valorant Premiere team handler - !rawteam
-    const rawValorantTeamHandler = require("./rawValorantTeamHandler");
-    const rawValorantTeamWrapper = createHandlerWrapper(
-      client,
-      () => rawValorantTeamHandler
-    );
-    console.log("[DEBUG] RaW Premiere wrapper:", {
-      hasMessageHandler: !!rawValorantTeamWrapper.messageHandler,
-      hasInteractionHandler: !!rawValorantTeamWrapper.interactionHandler
-    });
-    if (rawValorantTeamWrapper.messageHandler) {
-      commandRouter.registerMessageProcessor(
-        rawValorantTeamWrapper.messageHandler
-      );
-    }
-    if (rawValorantTeamWrapper.interactionHandler) {
-      console.log("[DEBUG] Registering raw_premiere_ button handler");
-      interactionRouter.registerButton(
-        "raw_premiere_",
-        rawValorantTeamWrapper.interactionHandler
-      );
-      interactionRouter.registerSelectMenu(
-        "raw_premiere_",
-        rawValorantTeamWrapper.interactionHandler
-      );
-    } else {
-      console.log("[DEBUG] ⚠️ rawValorantTeamWrapper has NO interactionHandler!");
-    }
-
-    // Russian roulette handler - !roulette, !spin
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./russianRouletteHandler"
-    );
-
-    // KOTH handler - !koth, !king
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./kothHandler"
+  if (helpWrapper.interactionHandler) {
+    interactionRouter.registerSelectMenu(
+      "help_category_",
+      helpWrapper.interactionHandler,
+      "help"
     );
   }
 
-  // Moderation handler - !kick, !ban, !timeout (security suite)
-  if (isHandlerEnabled("moderation")) {
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./moderationHandler"
+  // Valorant rank role handler - !setrankroles, !rankroles, etc.
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./valorantRankRoleHandler",
+    "valorant"
+  );
+
+  // Debug emoji handler - !emojis, !testemoji
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./debugEmojiHandler",
+    "debugEmoji"
+  );
+
+  // Eggbuck handler - !balance, !beg, !give, etc. (with donation button interactions)
+  const eggbuckHandler = require("./eggbuckHandler");
+  const eggbuckWrapper = createHandlerWrapper(client, () => eggbuckHandler);
+  if (eggbuckWrapper.messageHandler) {
+    commandRouter.registerMessageProcessor(
+      eggbuckWrapper.messageHandler,
+      "eggbuck"
+    );
+  }
+  if (eggbuckWrapper.interactionHandler) {
+    // Register donate button handler (donate_userId_messageId)
+    interactionRouter.registerButton(
+      "donate_",
+      eggbuckWrapper.interactionHandler,
+      "eggbuck"
+    );
+    // Register confirm/cancel buttons for clearhoney command
+    interactionRouter.registerButton(
+      "confirm_reset_",
+      eggbuckWrapper.interactionHandler,
+      "eggbuck"
+    );
+    interactionRouter.registerButton(
+      "cancel_reset_",
+      eggbuckWrapper.interactionHandler,
+      "eggbuck"
     );
   }
 
-  // mafiaHandler is returned at the end (consumed by the mafia webhook server in
-  // index.js). Declared here so the return works even when extras are not loaded.
-  let mafiaHandler = null;
+  // Gambling handler - !flip, !roulette, !dice, !slots
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./gamblingHandler",
+    "gambling"
+  );
 
-  if (loadExtras) {
-    // Valorant map handler - !map, !mapvote
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./valorantMapHandler"
+  // Blackjack handler - !blackjack, !bj, !hit, !stand
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./blackjackHandler",
+    "blackjack"
+  );
+
+  // Baccarat handler - !baccarat
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./baccaratHandler",
+    "baccarat"
+  );
+
+  // Plinko handler - !plinko
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./plinkoHandler",
+    "plinko"
+  );
+
+  // Crash handler - !crash (with button interactions for cash-out selection)
+  const crashHandler = require("./crashHandler");
+  const crashWrapper = createHandlerWrapper(client, () => crashHandler);
+  if (crashWrapper.messageHandler) {
+    commandRouter.registerMessageProcessor(
+      crashWrapper.messageHandler,
+      "crash"
     );
-
-    // Valorant in-house handler - !inhouse
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./valorantInhouseHandler"
+  }
+  if (crashWrapper.interactionHandler) {
+    interactionRouter.registerButton(
+      "crash_",
+      crashWrapper.interactionHandler,
+      "crash"
     );
+  }
 
-    // Valorant leaderboard handler - !valtop, !valleaderboard
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./valorantLeaderboardHandler"
+  // Clip handler - !submitclip, !clips
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./clipHandler",
+    "clips"
+  );
+
+  // Valorant team handler - !team, !createteam
+  const valorantTeamHandler = require("./valorantTeamHandler");
+  const valorantTeamWrapper = createHandlerWrapper(
+    client,
+    () => valorantTeamHandler
+  );
+  if (valorantTeamWrapper.messageHandler) {
+    commandRouter.registerMessageProcessor(
+      valorantTeamWrapper.messageHandler,
+      "valorant"
     );
-
-    // Note: wordleHandler registered above with direct listener (needs to see bot messages)
-
-    // Trivia handler - !trivia
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./triviaHandler"
+  }
+  if (valorantTeamWrapper.interactionHandler) {
+    interactionRouter.registerButton(
+      "valorant_",
+      valorantTeamWrapper.interactionHandler,
+      "valorant"
     );
-
-    // Bounty handler - !bounty, !claim
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./bountyHandler"
+    interactionRouter.registerModal(
+      "valorant_",
+      valorantTeamWrapper.interactionHandler,
+      "valorant"
     );
-
-    // Shop handler - !shop, !refreshshop, !clearshop (with buy button interactions)
-    const shopHandler = require("./shopHandler");
-    const shopWrapper = createHandlerWrapper(client, () => shopHandler);
-    if (shopWrapper.messageHandler) {
-      commandRouter.registerMessageProcessor(shopWrapper.messageHandler);
-    }
-    if (shopWrapper.interactionHandler) {
-      interactionRouter.registerButton(
-        "shop_buy_",
-        shopWrapper.interactionHandler
-      );
-    }
-
-    // Subscription command handler - !subscription, !sub, !tier
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./subscriptionCommandHandler"
+    interactionRouter.registerSelectMenu(
+      "valorant_",
+      valorantTeamWrapper.interactionHandler,
+      "valorant"
     );
+  }
 
-    // Settings command handler - !settings, !config, !setup
-    registerCommandHandler(
-      client,
-      commandRouter,
-      interactionRouter,
-      "./settingsCommandHandler"
+  // RaW Valorant Premiere team handler - !rawteam
+  const rawValorantTeamHandler = require("./rawValorantTeamHandler");
+  const rawValorantTeamWrapper = createHandlerWrapper(
+    client,
+    () => rawValorantTeamHandler
+  );
+  console.log("[DEBUG] RaW Premiere wrapper:", {
+    hasMessageHandler: !!rawValorantTeamWrapper.messageHandler,
+    hasInteractionHandler: !!rawValorantTeamWrapper.interactionHandler
+  });
+  if (rawValorantTeamWrapper.messageHandler) {
+    commandRouter.registerMessageProcessor(
+      rawValorantTeamWrapper.messageHandler,
+      "valorant"
     );
-
-    // Gladiator Arena handler - !gladiator, !arena, !arenastats, !arenahelp
-    const gladiatorHandler = require("./gladiatorHandler");
-    const gladiatorWrapper = createHandlerWrapper(client, () => gladiatorHandler);
-    if (gladiatorWrapper.messageHandler) {
-      commandRouter.registerMessageProcessor(gladiatorWrapper.messageHandler);
-    }
-    if (gladiatorWrapper.interactionHandler) {
-      interactionRouter.registerButton(
-        "gladiator_",
-        gladiatorWrapper.interactionHandler
-      );
-    }
-
-    // Tournament handler - !tournament, !tour (bracket system for external games)
-    const tournamentHandler = require("./tournamentHandler");
-    const tournamentWrapper = createHandlerWrapper(
-      client,
-      () => tournamentHandler
+  }
+  if (rawValorantTeamWrapper.interactionHandler) {
+    console.log("[DEBUG] Registering raw_premiere_ button handler");
+    interactionRouter.registerButton(
+      "raw_premiere_",
+      rawValorantTeamWrapper.interactionHandler,
+      "valorant"
     );
-    if (tournamentWrapper.messageHandler) {
-      commandRouter.registerMessageProcessor(tournamentWrapper.messageHandler);
-    }
-    if (tournamentWrapper.interactionHandler) {
-      interactionRouter.registerButton(
-        "tournament_",
-        tournamentWrapper.interactionHandler
-      );
-      interactionRouter.registerSelectMenu(
-        "tournament_",
-        tournamentWrapper.interactionHandler
-      );
-    }
+    interactionRouter.registerSelectMenu(
+      "raw_premiere_",
+      rawValorantTeamWrapper.interactionHandler,
+      "valorant"
+    );
+  } else {
+    console.log("[DEBUG] ⚠️ rawValorantTeamWrapper has NO interactionHandler!");
+  }
 
-    // Mafia handler - !createmafia, !join, !vote, etc.
-    mafiaHandler = require("./mafiaHandler");
-    const mafiaWrapper = createHandlerWrapper(client, () => mafiaHandler);
-    if (mafiaWrapper.messageHandler) {
-      commandRouter.registerMessageProcessor(mafiaWrapper.messageHandler);
-    }
-    if (mafiaWrapper.interactionHandler) {
-      // Mafia uses custom interaction handling
-      interactionRouter.registerButton("mafia_", mafiaWrapper.interactionHandler);
-      interactionRouter.registerButton(
-        "bee_mafia_",
-        mafiaWrapper.interactionHandler
-      );
-      interactionRouter.registerSelectMenu(
-        "mafia_",
-        mafiaWrapper.interactionHandler
-      );
-    }
+  // Russian roulette handler - !roulette, !spin
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./russianRouletteHandler",
+    "russianRoulette"
+  );
 
-    // Craftle handler - !craftle (daily Minecraft recipe guessing game)
-    const craftleHandler = require("./craftleHandler");
-    const craftleWrapper = createHandlerWrapper(client, () => craftleHandler);
-    if (craftleWrapper.messageHandler) {
-      commandRouter.registerMessageProcessor(craftleWrapper.messageHandler);
-    }
-    if (craftleWrapper.interactionHandler) {
-      interactionRouter.registerButton(
-        "craftle_",
-        craftleWrapper.interactionHandler
-      );
-      interactionRouter.registerSelectMenu(
-        "craftle_pick_item:",
-        craftleWrapper.interactionHandler
-      );
-    }
+  // KOTH handler - !koth, !king
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./kothHandler",
+    "koth"
+  );
 
-    // Start Craftle puzzle generation cron
-    const {
-      startPuzzleGenerationCron,
-    } = require("../craftle/utils/puzzleGenerator");
-    startPuzzleGenerationCron();
+  // Moderation handler - !kick, !ban, !timeout
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./moderationHandler",
+    "moderation"
+  );
 
-    // Valorant API handler - special initialization
-    try {
-      const valorantApiHandler = require("./valorantApiHandler");
-      const valorantApiWrapper = createHandlerWrapper(client, () => ({
-        init: valorantApiHandler.init,
-      }));
-      if (valorantApiHandler.init) {
-        valorantApiHandler.init(client, commandRouter, interactionRouter);
-      }
-    } catch (error) {
-      console.log("⚠️  Valorant API handler skipped:", error.message);
+  // Valorant map handler - !map, !mapvote
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./valorantMapHandler",
+    "valorant"
+  );
+
+  // Valorant in-house handler - !inhouse
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./valorantInhouseHandler",
+    "valorant"
+  );
+
+  // Valorant leaderboard handler - !valtop, !valleaderboard
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./valorantLeaderboardHandler",
+    "valorant"
+  );
+
+  // Note: wordleHandler registered above with direct listener (needs to see bot messages)
+
+  // Trivia handler - !trivia
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./triviaHandler",
+    "trivia"
+  );
+
+  // Bounty handler - !bounty, !claim
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./bountyHandler",
+    "bounty"
+  );
+
+  // Shop handler - !shop, !refreshshop, !clearshop (with buy button interactions)
+  const shopHandler = require("./shopHandler");
+  const shopWrapper = createHandlerWrapper(client, () => shopHandler);
+  if (shopWrapper.messageHandler) {
+    commandRouter.registerMessageProcessor(shopWrapper.messageHandler, "shop");
+  }
+  if (shopWrapper.interactionHandler) {
+    interactionRouter.registerButton(
+      "shop_buy_",
+      shopWrapper.interactionHandler,
+      "shop"
+    );
+  }
+
+  // Subscription command handler - !subscription, !sub, !tier
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./subscriptionCommandHandler",
+    "subscription"
+  );
+
+  // Settings command handler - !settings, !config, !setup
+  registerCommandHandler(
+    client,
+    commandRouter,
+    interactionRouter,
+    "./settingsCommandHandler",
+    "settings"
+  );
+
+  // Gladiator Arena handler - !gladiator, !arena, !arenastats, !arenahelp
+  const gladiatorHandler = require("./gladiatorHandler");
+  const gladiatorWrapper = createHandlerWrapper(client, () => gladiatorHandler);
+  if (gladiatorWrapper.messageHandler) {
+    commandRouter.registerMessageProcessor(
+      gladiatorWrapper.messageHandler,
+      "gladiator"
+    );
+  }
+  if (gladiatorWrapper.interactionHandler) {
+    interactionRouter.registerButton(
+      "gladiator_",
+      gladiatorWrapper.interactionHandler,
+      "gladiator"
+    );
+  }
+
+  // Tournament handler - !tournament, !tour (bracket system for external games)
+  const tournamentHandler = require("./tournamentHandler");
+  const tournamentWrapper = createHandlerWrapper(
+    client,
+    () => tournamentHandler
+  );
+  if (tournamentWrapper.messageHandler) {
+    commandRouter.registerMessageProcessor(
+      tournamentWrapper.messageHandler,
+      "tournament"
+    );
+  }
+  if (tournamentWrapper.interactionHandler) {
+    interactionRouter.registerButton(
+      "tournament_",
+      tournamentWrapper.interactionHandler,
+      "tournament"
+    );
+    interactionRouter.registerSelectMenu(
+      "tournament_",
+      tournamentWrapper.interactionHandler,
+      "tournament"
+    );
+  }
+
+  // Mafia handler - !createmafia, !join, !vote, etc.
+  const mafiaHandler = require("./mafiaHandler");
+  const mafiaWrapper = createHandlerWrapper(client, () => mafiaHandler);
+  if (mafiaWrapper.messageHandler) {
+    commandRouter.registerMessageProcessor(
+      mafiaWrapper.messageHandler,
+      "mafia"
+    );
+  }
+  if (mafiaWrapper.interactionHandler) {
+    // Mafia uses custom interaction handling
+    interactionRouter.registerButton(
+      "mafia_",
+      mafiaWrapper.interactionHandler,
+      "mafia"
+    );
+    interactionRouter.registerButton(
+      "bee_mafia_",
+      mafiaWrapper.interactionHandler,
+      "mafia"
+    );
+    interactionRouter.registerSelectMenu(
+      "mafia_",
+      mafiaWrapper.interactionHandler,
+      "mafia"
+    );
+  }
+
+  // Craftle handler - !craftle (daily Minecraft recipe guessing game)
+  const craftleHandler = require("./craftleHandler");
+  const craftleWrapper = createHandlerWrapper(client, () => craftleHandler);
+  if (craftleWrapper.messageHandler) {
+    commandRouter.registerMessageProcessor(
+      craftleWrapper.messageHandler,
+      "craftle"
+    );
+  }
+  if (craftleWrapper.interactionHandler) {
+    interactionRouter.registerButton(
+      "craftle_",
+      craftleWrapper.interactionHandler,
+      "craftle"
+    );
+    interactionRouter.registerSelectMenu(
+      "craftle_pick_item:",
+      craftleWrapper.interactionHandler,
+      "craftle"
+    );
+  }
+
+  // Start Craftle puzzle generation cron
+  const {
+    startPuzzleGenerationCron,
+  } = require("../craftle/utils/puzzleGenerator");
+  startPuzzleGenerationCron();
+
+  // Valorant API handler - special initialization
+  try {
+    const valorantApiHandler = require("./valorantApiHandler");
+    const valorantApiWrapper = createHandlerWrapper(client, () => ({
+      init: valorantApiHandler.init,
+    }));
+    if (valorantApiHandler.init) {
+      valorantApiHandler.init(client, commandRouter, interactionRouter);
     }
+  } catch (error) {
+    console.log("⚠️  Valorant API handler skipped:", error.message);
   }
 
   console.log("✅ All handlers registered with routers");
@@ -588,15 +619,15 @@ function registerCommandHandler(
   commandRouter,
   interactionRouter,
   handlerPath,
-  commandAliases = null
+  featureKey = null
 ) {
   try {
     const handler = require(handlerPath);
     const wrapper = createHandlerWrapper(client, () => handler);
 
-    // Register message handler as a processor
+    // Register message handler as a processor (gated per-guild by featureKey)
     if (wrapper.messageHandler) {
-      commandRouter.registerMessageProcessor(wrapper.messageHandler);
+      commandRouter.registerMessageProcessor(wrapper.messageHandler, featureKey);
     }
 
     // Register interaction handler
