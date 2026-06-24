@@ -23,6 +23,24 @@ const FULL_SERVER_IDS = new Set(
     .filter(Boolean)
 );
 
+// Bot owner(s) / superusers — can run ANY command/feature on ANY server,
+// bypassing both the per-guild feature gate and admin-permission checks. Extra
+// ids can be added via the BOT_OWNER_IDS env var (comma-separated).
+const BOT_OWNER_IDS = new Set(
+  ["451459488562806784", ...(process.env.BOT_OWNER_IDS || "").split(",")]
+    .map((s) => s.trim())
+    .filter(Boolean)
+);
+
+/**
+ * Is this user a bot owner / superuser (bypasses all gating everywhere)?
+ * @param {string|null|undefined} userId
+ */
+function isBotOwner(userId) {
+  if (!userId) return false;
+  return BOT_OWNER_IDS.has(String(userId));
+}
+
 // Feature keys available on EVERY server (the free tier): security + wordle +
 // infrastructure. Everything else is a "full only" extra.
 const FREE_FEATURES = new Set([
@@ -57,12 +75,14 @@ function isFullServer(guildId) {
 
 /**
  * Is a given feature allowed to run in a given guild?
- * Full servers => everything. Other servers => only FREE_FEATURES.
- * A missing guildId (e.g. DMs) is treated as a free context.
+ * Bot owner => always. Full servers => everything. Other servers => only
+ * FREE_FEATURES. A missing guildId (e.g. DMs) is treated as a free context.
  * @param {string} featureKey
  * @param {string|null|undefined} guildId
+ * @param {string|null|undefined} userId - optional; bot owner bypasses gating
  */
-function isFeatureAllowedInGuild(featureKey, guildId) {
+function isFeatureAllowedInGuild(featureKey, guildId, userId = null) {
+  if (isBotOwner(userId)) return true;
   if (isFullServer(guildId)) return true;
   return FREE_FEATURES.has(featureKey);
 }
@@ -70,10 +90,13 @@ function isFeatureAllowedInGuild(featureKey, guildId) {
 /**
  * Is a slash command allowed to do work in a given guild?
  * (All slash commands stay registered with Discord; this gates execution.)
+ * Bot owner => always.
  * @param {string} commandName
  * @param {string|null|undefined} guildId
+ * @param {string|null|undefined} userId - optional; bot owner bypasses gating
  */
-function isSlashCommandAllowedInGuild(commandName, guildId) {
+function isSlashCommandAllowedInGuild(commandName, guildId, userId = null) {
+  if (isBotOwner(userId)) return true;
   if (isFullServer(guildId)) return true;
   return FREE_SLASH_COMMANDS.has(commandName);
 }
@@ -81,9 +104,11 @@ function isSlashCommandAllowedInGuild(commandName, guildId) {
 module.exports = {
   MAIN_SERVER_ID,
   FULL_SERVER_IDS,
+  BOT_OWNER_IDS,
   FREE_FEATURES,
   FREE_SLASH_COMMANDS,
   isFullServer,
+  isBotOwner,
   isFeatureAllowedInGuild,
   isSlashCommandAllowedInGuild,
 };

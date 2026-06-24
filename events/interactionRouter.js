@@ -157,8 +157,9 @@ module.exports = (client) => {
     } catch (_) {}
 
     if (entry) {
-      // Per-guild gating by command name (free servers only run free-tier commands).
-      if (!isSlashCommandAllowedInGuild(commandName, interaction.guild?.id)) {
+      // Per-guild gating by command name (free servers only run free-tier
+      // commands). The bot owner bypasses this everywhere.
+      if (!isSlashCommandAllowedInGuild(commandName, interaction.guild?.id, interaction.user?.id)) {
         return replyFeatureUnavailable(interaction);
       }
       console.log(`[SLASH] ${fullCommand} | User: ${userTag} (${userId}) | Guild: ${guildName} | Channel: #${channelName}`);
@@ -215,9 +216,14 @@ module.exports = (client) => {
   }
 
   // Per-guild gate for an interaction's feature. A null featureKey always runs.
+  // The bot owner bypasses gating everywhere.
   function isInteractionAllowed(featureKey, interaction) {
     if (!featureKey) return true;
-    return isFeatureAllowedInGuild(featureKey, interaction.guild?.id);
+    return isFeatureAllowedInGuild(
+      featureKey,
+      interaction.guild?.id,
+      interaction.user?.id
+    );
   }
 
   // Politely tell the user the feature isn't available on this (free) server.

@@ -55,3 +55,28 @@ test("FREE_FEATURES contains the security + wordle + infra keys", () => {
     assert.ok(fv.FREE_FEATURES.has(key), `FREE_FEATURES missing ${key}`);
   }
 });
+
+const OWNER = "451459488562806784";
+
+test("isBotOwner recognizes the bot owner id", () => {
+  assert.strictEqual(fv.isBotOwner(OWNER), true);
+  assert.strictEqual(fv.isBotOwner("123"), false);
+  assert.strictEqual(fv.isBotOwner(null), false);
+});
+
+test("bot owner bypasses the per-guild feature gate on ANY server", () => {
+  // A blocked feature on a free server is allowed for the owner.
+  assert.strictEqual(fv.isFeatureAllowedInGuild("blackjack", OTHER_GUILD), false);
+  assert.strictEqual(fv.isFeatureAllowedInGuild("blackjack", OTHER_GUILD, OWNER), true);
+  assert.strictEqual(fv.isFeatureAllowedInGuild("ask", OTHER_GUILD, OWNER), true);
+});
+
+test("bot owner bypasses the per-guild slash-command gate on ANY server", () => {
+  assert.strictEqual(fv.isSlashCommandAllowedInGuild("balance", OTHER_GUILD), false);
+  assert.strictEqual(fv.isSlashCommandAllowedInGuild("balance", OTHER_GUILD, OWNER), true);
+});
+
+test("non-owner still gated normally when a userId is passed", () => {
+  assert.strictEqual(fv.isFeatureAllowedInGuild("blackjack", OTHER_GUILD, "123"), false);
+  assert.strictEqual(fv.isSlashCommandAllowedInGuild("balance", OTHER_GUILD, "123"), false);
+});

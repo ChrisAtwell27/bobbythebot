@@ -30,10 +30,12 @@ module.exports = (client) => {
     // First, run message processors (these need to see all messages)
     // Examples: alertHandler (keyword monitoring), thinIceHandler (profanity check)
     const guildId = message.guild?.id;
+    const authorId = message.author?.id;
     for (const entry of messageProcessors) {
       // Per-guild gating: skip a feature-tagged processor when the feature is
       // not allowed in this guild (free servers run only free-tier features).
-      if (entry.featureKey && !isFeatureAllowedInGuild(entry.featureKey, guildId)) {
+      // The bot owner bypasses this everywhere.
+      if (entry.featureKey && !isFeatureAllowedInGuild(entry.featureKey, guildId, authorId)) {
         continue;
       }
       try {

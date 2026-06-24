@@ -20,6 +20,12 @@ const { getSetting } = require('./settingsManager');
  * @returns {Promise<boolean>} Whether the member has admin permissions
  */
 async function hasAdminPermission(member, guildId) {
+    // Always allow the bot owner / superuser (any command, any server)
+    const { isBotOwner } = require('../config/freeVersion');
+    if (isBotOwner(member.id)) {
+        return true;
+    }
+
     // Always allow server owner
     if (member.id === member.guild.ownerId) {
         return true;
