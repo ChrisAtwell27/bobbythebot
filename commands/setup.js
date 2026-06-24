@@ -50,6 +50,21 @@ module.exports = {
                 )
             )
         )
+        .addSubcommand((s) =>
+          s
+            .setName("honey")
+            .setDescription("Turn the honey reward for wordle on or off (off by default)")
+            .addStringOption((o) =>
+              o
+                .setName("state")
+                .setDescription("on = award honey for wordle; off = no honey")
+                .setRequired(true)
+                .addChoices(
+                  { name: "on (award honey)", value: "on" },
+                  { name: "off (no honey)", value: "off" }
+                )
+            )
+        )
     )
     .addSubcommandGroup((g) =>
       g
@@ -164,15 +179,27 @@ async function handleWordle(interaction, guildId, sub) {
           : "🔒 Wordle leaderboard is now **private** — only this server's players are shown.",
     });
   }
+  if (sub === "honey") {
+    const enabled = interaction.options.getString("state") === "on";
+    await setSetting(guildId, "features.wordleHoney", enabled);
+    invalidateCache(guildId);
+    return interaction.editReply({
+      content: enabled
+        ? "🍯 Wordle honey rewards are now **ON** — players earn honey for their scores."
+        : "🚫 Wordle honey rewards are now **OFF** — wordle results are tracked, but no honey is awarded.",
+    });
+  }
   // status
   const current = await getSetting(guildId, "channels.wordle");
   const scope = (await getSetting(guildId, "wordleScope")) || "private";
+  const honeyOn = (await getSetting(guildId, "features.wordleHoney")) === true;
   return interaction.editReply({
     content:
       (current
         ? `📍 Wordle channel: <#${current}>`
         : "⚠️ No wordle channel set. Use `/setup wordle channel`.") +
-      `\n🔭 Scope: **${scope}**`,
+      `\n🔭 Scope: **${scope}**` +
+      `\n🍯 Honey rewards: **${honeyOn ? "on" : "off"}**`,
   });
 }
 

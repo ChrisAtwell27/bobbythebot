@@ -31,7 +31,12 @@ async function addScore(
     if (!client)
       return { success: false, error: "Convex client not initialized" };
 
-    const honeyAwarded = skipHoney ? 0 : HONEY_REWARDS[score] || 0;
+    // Honey from wordle is OFF by default per server. A guild must explicitly
+    // enable it (features.wordleHoney === true), e.g. via `/setup wordle honey on`.
+    const honeyEnabled =
+      (await getSetting(guildId, "features.wordleHoney")) === true;
+    const honeyAwarded =
+      skipHoney || !honeyEnabled ? 0 : HONEY_REWARDS[score] || 0;
 
     // Add score using Convex mutation
     await client.mutation(api.wordle.addScore, {
