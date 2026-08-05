@@ -71,7 +71,7 @@ const client = new Client({
   ],
   partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
-
+//
 // Discord client error handlers
 client.on("error", (error) => {
   console.error("[DISCORD] Client error:", error);
