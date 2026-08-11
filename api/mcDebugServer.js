@@ -29,6 +29,17 @@ const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
 // truncateLogs() instead of being rejected outright; screenshots are still
 // capped at MAX_FILE_BYTES by the explicit check in handleReport.
 const MAX_UPLOAD_BYTES = 16 * 1024 * 1024;
+// Hard ceiling on total request size, checked against the declared
+// Content-Length before multer buffers anything. Legitimate traffic tops out
+// near 36 MB (16 MB logs + 20 MB of screenshots), so 40 MB leaves headroom
+// without permitting the ~128 MB worst case a maximal allowed request can
+// reach. This exists because record() only runs after validation succeeds
+// (deliberately, so a malformed request can't burn a legitimate user's
+// quota) — an attacker who never sends a valid report is therefore never
+// recorded, and checkIpRateLimit() has nothing to gate on, so it always
+// calls next(). The rate limiter cannot bound that traffic; this ceiling is
+// what does.
+const MAX_REQUEST_BYTES = 40 * 1024 * 1024;
 
 /** Constant-time string compare that tolerates differing lengths. */
 function secretsMatch(a, b) {
@@ -145,6 +156,33 @@ class McDebugServer {
   }
 
   /**
+   * Rejects requests whose declared Content-Length exceeds MAX_REQUEST_BYTES
+   * BEFORE multer buffers anything. This exists because the rate limiter
+   * below cannot bound an attacker who never sends a VALID report:
+   * record() only runs after validateReport() succeeds in handleReport (so a
+   * malformed request can't consume a legitimate user's quota), which means
+   * an all-invalid attacker is never recorded and checkIpRateLimit() always
+   * calls next() for them. Every one of those requests would otherwise still
+   * pay the full multer buffering cost. A size ceiling checked ahead of any
+   * body read is the only thing that bounds that traffic.
+   *
+   * If the header is absent, unparseable, or NaN we deliberately do NOT
+   * reject — fall through to the existing behaviour. multer's own per-field
+   * and per-file limits still apply in that case, so a chunked request
+   * without a declared length is no worse off than it is today.
+   */
+  checkRequestSize(req, res, next) {
+    const declaredLength = Number(req.headers["content-length"]);
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
+      return res.status(413).json({
+        success: false,
+        error: `Request exceeds the ${MAX_REQUEST_BYTES / (1024 * 1024)} MB total size limit.`,
+      });
+    }
+    return next();
+  }
+
+  /**
    * Rejects already-rate-limited sources BEFORE multer buffers the request
    * body. Runs between requireAuth and the upload middleware, using only
    * headers/socket (getClientIp needs no parsed body). This is a read-only
@@ -182,6 +220,7 @@ class McDebugServer {
     this.app.post(
       "/api/mcdebug/report",
       this.requireAuth.bind(this),
+      this.checkRequestSize.bind(this),
       this.checkIpRateLimit.bind(this),
       (req, res) => {
         this.upload(req, res, (uploadError) => {

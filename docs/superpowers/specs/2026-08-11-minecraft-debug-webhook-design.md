@@ -82,6 +82,14 @@ tight so a request can't pad in extra fields before any rate limit runs.
 additionally capped at 8 MB each by an explicit check in `handleReport`, since
 multer's own per-file limit applies to screenshots and logs alike.
 
+Before any of that, a `checkRequestSize` route middleware rejects a request
+whose declared `Content-Length` exceeds a 40 MB total ceiling, checked ahead
+of `multer` so the body is never buffered. Legitimate traffic tops out near
+36 MB (16 MB logs + 20 MB of screenshots), so 40 MB leaves headroom without
+permitting the ~128 MB worst case a maximal allowed request can reach. A
+missing, unparseable, or NaN `Content-Length` is not rejected by this
+check — it falls through to `multer`'s own per-field and per-file limits.
+
 ### Authentication
 
 A single shared secret in `MC_DEBUG_WEBHOOK_SECRET`, sent as a bearer token.
@@ -114,6 +122,14 @@ rejected without the memory cost of buffering its upload. It is checked again
 in `handleReport`, after validation, where the accepted hit is actually
 recorded — a malformed request must not consume quota.
 
+That deliberate ordering — `record()` only after validation succeeds — has a
+consequence: an attacker who never sends a *valid* report is never recorded,
+so the limiter never has anything to gate on and `checkIpRateLimit` always
+calls `next()` for them. The rate limiter therefore cannot bound that
+traffic. The 40 MB `Content-Length` ceiling (see Request, above) is what
+bounds memory for it instead — it runs unconditionally, before any body is
+read, regardless of whether the request will turn out to be valid.
+
 Because every request arrives through the proxy in `index.js`, the socket
 address there is the DigitalOcean App Platform ingress, not the player — the
 platform terminates TLS and forwards into the container. The proxy resolves
@@ -135,7 +151,7 @@ socket address and finally to `"unknown"`; it deliberately never reads
 | `201` | `{ success: true, threadId, url }` |
 | `400` | Validation failed; `error` names the offending field |
 | `401` | Missing or wrong bearer token |
-| `413` | A screenshot exceeded 8 MB, screenshots together exceeded 20 MB, or `logs` exceeded the 16 MB ceiling. That ceiling applies identically whether `logs` arrives as a text field or as a file. Below it, oversized logs are truncated to the last 1 MB rather than rejected |
+| `413` | A screenshot exceeded 8 MB, screenshots together exceeded 20 MB, `logs` exceeded the 16 MB ceiling, or the total request's declared `Content-Length` exceeded 40 MB (checked before `multer` buffers anything). The 16 MB `logs` ceiling applies identically whether `logs` arrives as a text field or as a file; below it, oversized logs are truncated to the last 1 MB rather than rejected |
 | `429` | Rate limited; `retryAfter` in seconds |
 | `502` | Discord rejected the thread creation |
 | `503` | Discord client not ready; the mod should retry later |
