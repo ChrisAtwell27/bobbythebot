@@ -135,7 +135,7 @@ socket address and finally to `"unknown"`; it deliberately never reads
 | `201` | `{ success: true, threadId, url }` |
 | `400` | Validation failed; `error` names the offending field |
 | `401` | Missing or wrong bearer token |
-| `413` | A screenshot exceeded 8 MB, screenshots together exceeded 20 MB, or an uploaded logs *file* exceeded multer's 16 MB ceiling. Oversized `logs` sent as a text field (or as a file under 16 MB) are truncated instead of rejected, so they don't produce a `413` |
+| `413` | A screenshot exceeded 8 MB, screenshots together exceeded 20 MB, or `logs` exceeded the 16 MB ceiling. That ceiling applies identically whether `logs` arrives as a text field or as a file. Below it, oversized logs are truncated to the last 1 MB rather than rejected |
 | `429` | Rate limited; `retryAfter` in seconds |
 | `502` | Discord rejected the thread creation |
 | `503` | Discord client not ready; the mod should retry later |
