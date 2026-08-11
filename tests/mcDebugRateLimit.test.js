@@ -114,26 +114,58 @@ test("total key count is capped at maxKeys with oldest-first eviction", () => {
 });
 
 test("eviction is oldest-first, preserving newest offenders", () => {
-  const limiter = new RateLimiter({ maxKeys: 3 });
+  const limiter = new RateLimiter({ maxKeys: 3, burst: 3, burstWindowMs: 10 * 1000 });
   const t0 = 1_000_000;
 
-  // Record three keys with multiple hits each to easily detect eviction
+  // Record three keys at burst limit (3 hits each, all within burst window)
   limiter.record("first", t0);
-  limiter.record("second", t0 + 1);
-  limiter.record("third", t0 + 2);
+  limiter.record("first", t0 + 1);
+  limiter.record("first", t0 + 2);
+
+  limiter.record("second", t0 + 3);
+  limiter.record("second", t0 + 4);
+  limiter.record("second", t0 + 5);
+
+  limiter.record("third", t0 + 6);
+  limiter.record("third", t0 + 7);
+  limiter.record("third", t0 + 8);
+
   assert.strictEqual(limiter.size(), 3);
 
-  // Recording a fourth key triggers oldest-first eviction
-  limiter.record("fourth", t0 + 3);
+  // All three keys at burst limit; verify they block within burst window
+  const beforeEviction = t0 + 9;
+  assert.strictEqual(limiter.check("first", beforeEviction).allowed, false, "first should be blocked before eviction");
+  assert.strictEqual(limiter.check("second", beforeEviction).allowed, false, "second should be blocked before eviction");
+  assert.strictEqual(limiter.check("third", beforeEviction).allowed, false, "third should be blocked before eviction");
+
+  // Record a fourth key, triggering oldest-first eviction of "first"
+  limiter.record("fourth", t0 + 10);
+  limiter.record("fourth", t0 + 11);
+  limiter.record("fourth", t0 + 12);
   assert.strictEqual(limiter.size(), 3);
 
-  // "first" should be gone; try to record it again and check the map doesn't grow
-  limiter.record("first", t0 + 4);
-  assert.strictEqual(limiter.size(), 3, "recording an evicted key replaces the oldest");
-
-  // Verify the newest keys are still there by checking if they can be blocked
-  // "second", "third", "fourth" should still exist and have hits
-  // A fresh key "new" should be allowed
-  const checkNew = limiter.check("new", t0 + 5);
-  assert.strictEqual(checkNew.allowed, true);
+  // At the same time (within burst window), assert which keys survived:
+  // - "first" should be GONE: check returns allowed=true (no history in map)
+  // - "second", "third", "fourth" should REMAIN: check returns allowed=false (at burst limit)
+  const afterEviction = t0 + 13;
+  assert.strictEqual(
+    limiter.check("first", afterEviction).allowed,
+    true,
+    "first should be allowed (evicted, no history in map)"
+  );
+  assert.strictEqual(
+    limiter.check("second", afterEviction).allowed,
+    false,
+    "second should be blocked (survived eviction, still at burst limit)"
+  );
+  assert.strictEqual(
+    limiter.check("third", afterEviction).allowed,
+    false,
+    "third should be blocked (survived eviction, still at burst limit)"
+  );
+  assert.strictEqual(
+    limiter.check("fourth", afterEviction).allowed,
+    false,
+    "fourth should be blocked (newest, at burst limit)"
+  );
 });
