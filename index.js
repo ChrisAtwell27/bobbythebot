@@ -326,15 +326,57 @@ const server = http.createServer((req, res) => {
     apiName = "Settings API";
   }
 
+  // Route /api/mcdebug/* to the Minecraft Debug API on port 3004
+  if (req.url.startsWith("/api/mcdebug")) {
+    targetPort = process.env.MC_DEBUG_API_PORT || 3004;
+    apiName = "MC Debug API";
+  }
+
   // Proxy /api/* requests to the appropriate internal API
   if (req.url.startsWith("/api/")) {
-    // Forward the request to the target API
+    // Forward the request to the target API.
+    //
+    // Topology: client -> DigitalOcean App Platform ingress -> this container.
+    // The platform terminates TLS and forwards to us on a private network, so
+    // req.socket.remoteAddress here is the App Platform load balancer, not the
+    // player. When the ingress forwards a request it appends the true client
+    // address as the LAST entry of x-forwarded-for, after anything the caller
+    // itself forged — a caller can only prepend fake values, never overwrite
+    // the entry the platform adds. So: if an incoming x-forwarded-for is
+    // present, the last entry AS RECEIVED is the trustworthy client address.
+    // With no incoming header at all (direct connection / local dev), the
+    // socket address is the client.
+    //
+    // We resolve that address once, here at the edge, and hand it to the
+    // internal APIs on a dedicated x-mc-client-ip header that we ALWAYS set
+    // ourselves (overwriting anything the caller sent under that name), so it
+    // can never be forged by a request. x-forwarded-for itself is passed
+    // through unchanged from whatever the caller/ingress sent — we no longer
+    // append to it, since appending our own hop made every request collapse
+    // onto our hop being read as "the" client address downstream regardless
+    // of who actually sent it.
+    const incomingForwardedFor = req.headers["x-forwarded-for"];
+    const remoteAddress = req.socket.remoteAddress || "";
+    let clientIp = "";
+    if (incomingForwardedFor) {
+      const parts = String(incomingForwardedFor)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      clientIp = parts[parts.length - 1] || "";
+    }
+    if (!clientIp) clientIp = remoteAddress;
+    if (!clientIp) clientIp = "unknown";
+
     const options = {
       hostname: "localhost",
       port: targetPort,
       path: req.url,
       method: req.method,
-      headers: req.headers,
+      headers: {
+        ...req.headers,
+        "x-mc-client-ip": clientIp,
+      },
     };
 
     const proxyReq = http.request(options, (proxyRes) => {
@@ -449,6 +491,22 @@ if (process.env.SETTINGS_API_ENABLED !== "false") {
   });
 }
 
+// Initialize Minecraft Debug API server on port 3004
+let mcDebugServer = null;
+if (process.env.MC_DEBUG_API_ENABLED !== "false") {
+  const McDebugServer = require("./api/mcDebugServer");
+  const mcDebugPort = process.env.MC_DEBUG_API_PORT || 3004;
+
+  client.once("ready", () => {
+    try {
+      mcDebugServer = new McDebugServer(client);
+      mcDebugServer.start(mcDebugPort);
+    } catch (error) {
+      console.error("Failed to start Minecraft Debug API:", error);
+    }
+  });
+}
+
 // Start the bot - Enhanced Verification System
 const {
   setupVerificationChannel,
@@ -535,6 +593,16 @@ function gracefulShutdown(signal) {
       console.log("Subscription server stopped");
     } catch (error) {
       console.error("Error stopping subscription server:", error);
+    }
+  }
+
+  // Stop Minecraft debug server
+  if (mcDebugServer) {
+    try {
+      mcDebugServer.stop();
+      console.log("Minecraft debug server stopped");
+    } catch (error) {
+      console.error("Error stopping Minecraft debug server:", error);
     }
   }
 

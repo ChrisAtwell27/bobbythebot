@@ -40,6 +40,11 @@ const userSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     },
+    // One-time nudge pointing Minecraft players at the bug forum
+    mcForumNudgedAt: {
+        type: Date,
+        default: null
+    },
     // Virtual pet data
     pet: {
         id: String,

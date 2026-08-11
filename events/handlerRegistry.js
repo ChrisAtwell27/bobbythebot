@@ -114,6 +114,10 @@ module.exports = (client, commandRouter, interactionRouter) => {
     commandRouter.registerMessageProcessor(askProcessor, "ask");
   }
 
+  // Minecraft forum nudge - points new modded players at the bug forum
+  const mcForumNudgeHandler = require("./mcForumNudgeHandler");
+  commandRouter.registerMessageProcessor(mcForumNudgeHandler(client), "mcForumNudge");
+
   // Note: interactionHandler.js removed - askHandler already handles Bobby mentions with AI
   // The interactionHandler was causing duplicate/conflicting responses
 
