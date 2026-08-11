@@ -30,6 +30,24 @@ function secretsMatch(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+/** Strip CR/LF and other control characters so untrusted text can't forge log lines. */
+function stripControlChars(value) {
+  // eslint-disable-next-line no-control-regex
+  return String(value).replace(/[\x00-\x1f\x7f]/g, "");
+}
+
+/**
+ * Is this error plausibly about the attachments (screenshots) rather than some
+ * unrelated failure (permissions, bad tag, bad title, ...)? Used to gate the
+ * screenshot-drop retry so it only fires when dropping screenshots could help.
+ */
+function isAttachmentError(error) {
+  if (error?.status === 413) return true;
+  if (error?.code === 40005) return true;
+  const message = String(error?.message || "").toLowerCase();
+  return /attachment|file|size/.test(message);
+}
+
 /**
  * Pick a forum tag for the thread: the first tag that looks bug-related, or —
  * only when the forum requires a tag — the first available one, so creation
@@ -72,7 +90,10 @@ class McDebugServer {
       limits: {
         fileSize: MAX_FILE_BYTES,
         files: 4, // 3 screenshots + an optional logs file
-        fields: 10,
+        // Exactly the four text fields the contract defines: version,
+        // description, username, logs. Kept tight (not a round number) so a
+        // request can't pad in extra 8 MB fields before any rate limit runs.
+        fields: 4,
         // Matches fileSize so logs behave the same whether sent as a text field
         // or as a file: accepted up to 8 MB, then truncated to the last 1 MB.
         fieldSize: MAX_FILE_BYTES,
@@ -179,7 +200,9 @@ class McDebugServer {
     }
 
     const now = Date.now();
-    const userKey = username.toLowerCase();
+    // An omitted username must not disable this limiter: fall back to the IP,
+    // prefixed so the two key spaces (usernames vs. IP fallbacks) can't collide.
+    const userKey = username ? username.toLowerCase() : `ip:${ip}`;
 
     const ipCheck = this.ipLimiter.check(ip, now);
     if (!ipCheck.allowed) {
@@ -219,7 +242,9 @@ class McDebugServer {
         logs,
         screenshots,
       });
-      console.log(`[MC Debug] Opened thread ${thread.id} for ${username || ip}`);
+      console.log(
+        `[MC Debug] Opened thread ${thread.id} for ${stripControlChars(username) || ip}`
+      );
       return res.status(201).json({
         success: true,
         threadId: thread.id,
@@ -278,7 +303,7 @@ class McDebugServer {
         reason: "Minecraft in-game /debug report",
       });
     } catch (error) {
-      if (!imageAttachments.length) throw error;
+      if (!imageAttachments.length || !isAttachmentError(error)) throw error;
 
       // A partial report beats no report: drop the images and try once more.
       console.error(
