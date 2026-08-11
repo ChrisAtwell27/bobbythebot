@@ -170,13 +170,39 @@ most once, ever.
 
 Default mode (`keyword`) triggers on a bug keyword at any message length. A
 short report like "game crashes on load" is exactly what belongs in the forum,
-so length is not a gate:
+so length is not a gate.
+
+Keywords sit in two tiers, because a flat list gets this wrong in both
+directions. Words that only ever mean "something is broken" fire on their own:
 
 ```text
-bug, issue, problem, glitch, broke, broken, crash, crashing, error,
-fail, failing, doesn't work, does not work, doesnt work, not working,
-won't load, wont load, supposed to, stuck
+bug, glitch, crash / crashes / crashing / crashed / crashs, error, fail,
+doesn't work, does not work, doesnt work, won't load / start / open / work /
+launch / connect / join / install, not loading, black screen,
+infinite loading, kicked me out, nothing happens
 ```
+
+Words that mean something else just as often in a Minecraft server need a
+second signal — a nearby game or mod noun (`mod`, `modpack`, `server`, `world`,
+`client`, `launcher`, `texture`, `recipe`, `block`, `item`, `screen`):
+
+```text
+issue, problem, broke, broken, not working, supposed to, stuck
+```
+
+Both apostrophe forms are matched: the straight `'` (U+0027) and the
+typographic `’` (U+2019) that iOS and Discord mobile autocorrect produce.
+
+The tiering exists because the loose words fire constantly on ordinary chat.
+"That boss is broken op", "I got stuck in a ravine", "is the nether roof
+supposed to look like this?", and "not working on anything today" are all
+normal messages, and a nudge on any of them publicly corrects a new member who
+did nothing wrong. Requiring a game noun alongside the loose word keeps them
+useful for "my world is broken after the update" while dropping the chatter.
+
+One accepted false positive remains: "killing bugs in the game" fires, because
+`bug` stays in the strong tier. It is the single highest-value keyword and
+narrowing it would cost far more than the occasional miss.
 
 The literal reading of the original request — keyword **or** more than 6 words —
 fires on nearly every message a new member sends, including greetings, because
