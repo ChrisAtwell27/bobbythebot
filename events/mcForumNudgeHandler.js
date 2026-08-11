@@ -57,22 +57,44 @@ module.exports = (client) => {
       if (!shouldNudge(message.content, mode)) return;
 
       const userId = message.author.id;
+
+      // Cheap fast path: avoids a write for the overwhelmingly common
+      // already-nudged case. This read alone is racy (two concurrent
+      // qualifying messages can both pass it before either writes) — the
+      // actual "once ever" guarantee comes from the atomic claim below.
       const existing = await User.findOne({ userId }).select("mcForumNudgedAt").lean();
       if (existing?.mcForumNudgedAt) return;
 
-      await message.reply({
-        content:
-          `That sounds like a bug — please post it in <#${forumId}> so we can track it. ` +
-          `Include your mod version, what happened, your logs, and screenshots if you have them.\n` +
-          `Fastest option: run \`/debug\` in-game and it files the report for you.`,
-        allowedMentions: { repliedUser: true },
-      });
+      // Make sure the user document exists, since the claim below is a
+      // conditional update and needs something to match against.
+      await User.updateOne({ userId }, { $setOnInsert: { userId } }, { upsert: true });
 
-      await User.findOneAndUpdate(
-        { userId },
-        { $set: { mcForumNudgedAt: new Date() } },
-        { upsert: true }
+      // Claim the nudge atomically BEFORE replying. The filter itself is the
+      // lock: only one of two concurrent messages from the same member can
+      // match `mcForumNudgedAt: null`, so only one proceeds past this point.
+      const claim = await User.updateOne(
+        { userId, mcForumNudgedAt: null },
+        { $set: { mcForumNudgedAt: new Date() } }
       );
+      if (claim.modifiedCount === 0) return; // someone else claimed it first
+
+      try {
+        await message.reply({
+          content:
+            `That sounds like a bug — please post it in <#${forumId}> so we can track it. ` +
+            `Include your mod version, what happened, your logs, and screenshots if you have them.\n` +
+            `Fastest option: run \`/debug\` in-game and it files the report for you.`,
+          allowedMentions: { repliedUser: true },
+        });
+      } catch (replyError) {
+        // The reply failed after we claimed the nudge. Release the claim so
+        // the member stays eligible for a future nudge rather than being
+        // silently locked out by a one-off Discord API failure. This rollback
+        // must never itself throw.
+        await User.updateOne({ userId }, { $set: { mcForumNudgedAt: null } }).catch(() => {});
+        console.error(`[MC Nudge] reply failed, released claim for ${userId}:`, replyError);
+        return;
+      }
 
       console.log(`[MC Nudge] Nudged ${message.author.tag} (${userId})`);
     } catch (error) {
