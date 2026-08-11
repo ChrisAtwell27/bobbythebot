@@ -326,15 +326,30 @@ const server = http.createServer((req, res) => {
     apiName = "Settings API";
   }
 
+  // Route /api/mcdebug/* to the Minecraft Debug API on port 3004
+  if (req.url.startsWith("/api/mcdebug")) {
+    targetPort = process.env.MC_DEBUG_API_PORT || 3004;
+    apiName = "MC Debug API";
+  }
+
   // Proxy /api/* requests to the appropriate internal API
   if (req.url.startsWith("/api/")) {
     // Forward the request to the target API
+    // Append the real remote address so internal APIs can rate limit by client.
+    // A forging client can only PREPEND values, so ours stays last.
+    const existingForwardedFor = req.headers["x-forwarded-for"];
+    const remoteAddress = req.socket.remoteAddress || "";
     const options = {
       hostname: "localhost",
       port: targetPort,
       path: req.url,
       method: req.method,
-      headers: req.headers,
+      headers: {
+        ...req.headers,
+        "x-forwarded-for": existingForwardedFor
+          ? `${existingForwardedFor}, ${remoteAddress}`
+          : remoteAddress,
+      },
     };
 
     const proxyReq = http.request(options, (proxyRes) => {
@@ -449,6 +464,22 @@ if (process.env.SETTINGS_API_ENABLED !== "false") {
   });
 }
 
+// Initialize Minecraft Debug API server on port 3004
+let mcDebugServer = null;
+if (process.env.MC_DEBUG_API_ENABLED !== "false") {
+  const McDebugServer = require("./api/mcDebugServer");
+  const mcDebugPort = process.env.MC_DEBUG_API_PORT || 3004;
+
+  client.once("ready", () => {
+    try {
+      mcDebugServer = new McDebugServer(client);
+      mcDebugServer.start(mcDebugPort);
+    } catch (error) {
+      console.error("Failed to start Minecraft Debug API:", error);
+    }
+  });
+}
+
 // Start the bot - Enhanced Verification System
 const {
   setupVerificationChannel,
@@ -535,6 +566,16 @@ function gracefulShutdown(signal) {
       console.log("Subscription server stopped");
     } catch (error) {
       console.error("Error stopping subscription server:", error);
+    }
+  }
+
+  // Stop Minecraft debug server
+  if (mcDebugServer) {
+    try {
+      mcDebugServer.stop();
+      console.log("Minecraft debug server stopped");
+    } catch (error) {
+      console.error("Error stopping Minecraft debug server:", error);
     }
   }
 
