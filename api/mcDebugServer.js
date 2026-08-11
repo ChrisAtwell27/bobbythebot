@@ -19,8 +19,16 @@ const {
 const { RateLimiter } = require("../utils/mcDebugRateLimit");
 
 const DEFAULT_FORUM_ID = "1527727915817762997";
+// Per-screenshot cap, enforced in app code (handleReport) — multer's own
+// per-file limit is raised above this so a large `logs` upload isn't rejected.
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
+// multer's fileSize applies to EVERY file part, including a logs file sent as
+// an upload rather than a text field, and fieldSize applies to logs sent as
+// text. Both are set to this so an oversized logs upload reaches
+// truncateLogs() instead of being rejected outright; screenshots are still
+// capped at MAX_FILE_BYTES by the explicit check in handleReport.
+const MAX_UPLOAD_BYTES = 16 * 1024 * 1024;
 
 /** Constant-time string compare that tolerates differing lengths. */
 function secretsMatch(a, b) {
@@ -88,15 +96,19 @@ class McDebugServer {
     this.upload = multer({
       storage: multer.memoryStorage(),
       limits: {
-        fileSize: MAX_FILE_BYTES,
+        // Applies to every file part (screenshots AND a logs file). Screenshots
+        // are additionally capped at MAX_FILE_BYTES (8 MB) in handleReport;
+        // this larger ceiling exists so a big logs upload survives to
+        // truncateLogs() instead of being rejected here.
+        fileSize: MAX_UPLOAD_BYTES,
         files: 4, // 3 screenshots + an optional logs file
         // Exactly the four text fields the contract defines: version,
         // description, username, logs. Kept tight (not a round number) so a
-        // request can't pad in extra 8 MB fields before any rate limit runs.
+        // request can't pad in extra huge fields before any rate limit runs.
         fields: 4,
-        // Matches fileSize so logs behave the same whether sent as a text field
-        // or as a file: accepted up to 8 MB, then truncated to the last 1 MB.
-        fieldSize: MAX_FILE_BYTES,
+        // Logs behave the same whether sent as a text field or as a file:
+        // accepted up to MAX_UPLOAD_BYTES, then truncated to the last 1 MB.
+        fieldSize: MAX_UPLOAD_BYTES,
       },
     }).fields([
       { name: "screenshots", maxCount: 3 },
@@ -132,6 +144,29 @@ class McDebugServer {
     return next();
   }
 
+  /**
+   * Rejects already-rate-limited sources BEFORE multer buffers the request
+   * body. Runs between requireAuth and the upload middleware, using only
+   * headers/socket (getClientIp needs no parsed body). This is a read-only
+   * check() — it does NOT record() — so a malformed-but-allowed request still
+   * gets to consume its quota exactly once, in handleReport, after
+   * validation. That means an accepted report is check()ed twice (here, then
+   * again in handleReport); check() is cheap and read-only by design, so
+   * that's an acceptable cost for closing the buffer-before-limit gap.
+   */
+  checkIpRateLimit(req, res, next) {
+    const ip = getClientIp(req);
+    const ipCheck = this.ipLimiter.check(ip, Date.now());
+    if (!ipCheck.allowed) {
+      return res.status(429).json({
+        success: false,
+        error: "Too many reports from this address. Try again later.",
+        retryAfter: ipCheck.retryAfter,
+      });
+    }
+    return next();
+  }
+
   setupRoutes() {
     this.app.get("/api/mcdebug/health", (req, res) => {
       res.json({
@@ -144,27 +179,36 @@ class McDebugServer {
       });
     });
 
-    this.app.post("/api/mcdebug/report", this.requireAuth.bind(this), (req, res) => {
-      this.upload(req, res, (uploadError) => {
-        if (uploadError) return this.handleUploadError(uploadError, res);
+    this.app.post(
+      "/api/mcdebug/report",
+      this.requireAuth.bind(this),
+      this.checkIpRateLimit.bind(this),
+      (req, res) => {
+        this.upload(req, res, (uploadError) => {
+          if (uploadError) return this.handleUploadError(uploadError, res);
 
-        this.handleReport(req, res).catch((error) => {
-          console.error("[MC Debug] Unhandled report error:", error);
-          if (!res.headersSent) {
-            res.status(500).json({ success: false, error: "Internal error." });
-          }
+          this.handleReport(req, res).catch((error) => {
+            console.error("[MC Debug] Unhandled report error:", error);
+            if (!res.headersSent) {
+              res.status(500).json({ success: false, error: "Internal error." });
+            }
+          });
         });
-      });
-    });
+      }
+    );
   }
 
   handleUploadError(error, res) {
     console.warn(`[MC Debug] Upload rejected: ${error.code || error.message}`);
 
     if (error.code === "LIMIT_FILE_SIZE") {
-      return res
-        .status(413)
-        .json({ success: false, error: "Each screenshot must be 8 MB or smaller." });
+      // multer's own per-file ceiling (MAX_UPLOAD_BYTES) is above the 8 MB
+      // screenshot cap so oversized logs uploads reach truncateLogs() instead
+      // of landing here — this only fires for a file past that larger ceiling.
+      return res.status(413).json({
+        success: false,
+        error: "A screenshot exceeded 8 MB, or an uploaded logs file exceeded 16 MB.",
+      });
     }
     if (error.code === "LIMIT_FILE_COUNT" || error.code === "LIMIT_UNEXPECTED_FILE") {
       return res.status(400).json({
@@ -186,6 +230,16 @@ class McDebugServer {
     const screenshots = req.files?.screenshots || [];
     const logsFile = (req.files?.logs || [])[0];
     const logs = logsFile ? logsFile.buffer.toString("utf8") : String(req.body.logs || "");
+
+    // multer's own per-file limit was raised to MAX_UPLOAD_BYTES (16 MB) so a
+    // large logs upload survives to truncateLogs(); screenshots still need
+    // their own 8 MB cap enforced here.
+    const oversizedScreenshot = screenshots.find((file) => file.size > MAX_FILE_BYTES);
+    if (oversizedScreenshot) {
+      return res
+        .status(413)
+        .json({ success: false, error: "Each screenshot must be 8 MB or smaller." });
+    }
 
     const totalBytes = screenshots.reduce((sum, file) => sum + file.size, 0);
     if (totalBytes > MAX_TOTAL_BYTES) {
@@ -298,7 +352,15 @@ class McDebugServer {
     try {
       return await channel.threads.create({
         name,
-        message: { content, embeds: [embed], files: [...logAttachments, ...imageAttachments] },
+        message: {
+          content,
+          embeds: [embed],
+          files: [...logAttachments, ...imageAttachments],
+          // logs and description are attacker-controlled (mod is client-side);
+          // never let Discord parse mentions out of them — an @everyone or role
+          // ping needs no special permission to land.
+          allowedMentions: { parse: [] },
+        },
         appliedTags,
         reason: "Minecraft in-game /debug report",
       });
@@ -316,7 +378,12 @@ class McDebugServer {
       });
       return await channel.threads.create({
         name,
-        message: { content, embeds: [embed], files: logAttachments },
+        message: {
+          content,
+          embeds: [embed],
+          files: logAttachments,
+          allowedMentions: { parse: [] },
+        },
         appliedTags,
         reason: "Minecraft in-game /debug report (screenshots dropped)",
       });

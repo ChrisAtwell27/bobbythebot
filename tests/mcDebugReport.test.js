@@ -147,17 +147,30 @@ test("sanitizeFilename strips path separators and odd characters", () => {
   assert.strictEqual(sanitizeFilename("!!!", "fallback.png"), "fallback.png");
 });
 
-test("getClientIp trusts the LAST x-forwarded-for entry, which our proxy appends", () => {
+test("getClientIp reads x-mc-client-ip, the header the proxy always sets itself", () => {
   const req = {
-    headers: { "x-forwarded-for": "1.2.3.4, 203.0.113.9" },
+    headers: { "x-mc-client-ip": "203.0.113.9" },
     socket: { remoteAddress: "127.0.0.1" },
   };
   assert.strictEqual(getClientIp(req), "203.0.113.9");
 });
 
-test("getClientIp falls back to the socket address", () => {
+test("getClientIp ignores x-forwarded-for entirely, even when present, and falls back to the socket", () => {
+  const req = {
+    headers: { "x-forwarded-for": "1.2.3.4, 203.0.113.9" },
+    socket: { remoteAddress: "198.51.100.7" },
+  };
+  assert.strictEqual(getClientIp(req), "198.51.100.7");
+});
+
+test("getClientIp falls back to the socket address when x-mc-client-ip is absent", () => {
   const req = { headers: {}, socket: { remoteAddress: "198.51.100.7" } };
   assert.strictEqual(getClientIp(req), "198.51.100.7");
+});
+
+test("getClientIp returns 'unknown' when nothing is available", () => {
+  const req = { headers: {}, socket: {} };
+  assert.strictEqual(getClientIp(req), "unknown");
 });
 
 test("validateReport rejects a version longer than MAX_VERSION (64 chars)", () => {

@@ -125,19 +125,19 @@ function sanitizeFilename(name, fallback = "screenshot.png") {
 }
 
 /**
- * Every request reaches this server through the proxy in index.js, so the socket
- * address is always localhost. The proxy APPENDS the real remote address to
- * x-forwarded-for; a forging client can only prepend, so the last entry is ours.
+ * Every request reaches this server through the proxy in index.js, which resolves
+ * the real client address ONCE (at the App Platform ingress edge) and hands it
+ * down on a dedicated `x-mc-client-ip` header that it always overwrites — a
+ * caller cannot forge it. We therefore read ONLY that header. We deliberately do
+ * NOT read x-forwarded-for here: it is passed through unmodified from whatever
+ * the caller/ingress sent, so trusting it directly would let a caller set their
+ * own rate-limit key. Falls back to the socket address (direct connections,
+ * local dev without the proxy in front), and finally to "unknown".
  */
 function getClientIp(req) {
-  const header = req.headers?.["x-forwarded-for"];
-  if (header) {
-    const parts = String(header)
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (parts.length) return parts[parts.length - 1];
-  }
+  const header = req.headers?.["x-mc-client-ip"];
+  const trimmed = header ? String(header).trim() : "";
+  if (trimmed) return trimmed;
   return req.socket?.remoteAddress || "unknown";
 }
 

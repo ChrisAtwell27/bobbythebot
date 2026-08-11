@@ -69,12 +69,18 @@ Content-Type: multipart/form-data
 | --- | --- | --- |
 | `version` | text | required, 1–64 chars |
 | `description` | text | required, 1–2000 chars |
-| `logs` | text or file | optional, accepted up to 8 MB, then truncated to the **last** 1 MB. Same limit whether sent as a text field or a file |
+| `logs` | text or file | optional, accepted up to 16 MB, then truncated to the **last** 1 MB. Same limit whether sent as a text field or a file |
 | `username` | text | optional, ≤32 chars, the player's Minecraft name |
 | `screenshots` | file, 0–3 | `image/png` or `image/jpeg` only, ≤8 MB each, ≤20 MB total |
 
 Files are parsed by `multer` (new dependency) using memory storage. Nothing
-touches disk.
+touches disk. `multer` is capped at 4 fields and 4 files per request (3
+screenshots + 1 logs file) — exactly what the contract above defines, kept
+tight so a request can't pad in extra fields before any rate limit runs.
+`fileSize` and `fieldSize` are both 16 MB (the ceiling that lets an oversized
+`logs` upload reach truncation instead of being rejected); screenshots are
+additionally capped at 8 MB each by an explicit check in `handleReport`, since
+multer's own per-file limit applies to screenshots and logs alike.
 
 ### Authentication
 
@@ -96,16 +102,31 @@ pruned on every check, so the map stays bounded. Two independent keys, both
 enforced:
 
 - per source IP: 3 reports / 10 min, 20 / day
-- per `username` when supplied: 3 reports / 10 min, 20 / day
+- per `username` when supplied, otherwise per source IP (key `ip:${ip}`, distinct
+  from the IP limiter's own key space): 3 reports / 10 min, 20 / day
 
 Limits reset on bot restart. That is acceptable: the failure mode is a brief
 window of extra allowance, not lost data.
 
+The IP limiter is also checked (read-only, no `record()`) as route middleware
+*before* `multer` buffers the request body, so an already-limited source is
+rejected without the memory cost of buffering its upload. It is checked again
+in `handleReport`, after validation, where the accepted hit is actually
+recorded — a malformed request must not consume quota.
+
 Because every request arrives through the proxy in `index.js`, the socket
-address is always localhost and useless as a limiter key. The proxy therefore
-**appends** the real remote address to `X-Forwarded-For`, and the limiter reads
-the **last** entry in that header. A client that forges the header only prepends
-values, so the trustworthy one — ours — stays last.
+address there is the DigitalOcean App Platform ingress, not the player — the
+platform terminates TLS and forwards into the container. The proxy resolves
+the true client address once: if an incoming `X-Forwarded-For` is present, the
+**last** entry of that header *as received* is trustworthy (App Platform
+appends the real client after anything the caller forged); otherwise it falls
+back to the socket address. That resolved value is placed on a dedicated
+`X-Mc-Client-Ip` header, which the proxy always overwrites — a caller cannot
+set it themselves. `X-Forwarded-For` itself is passed through to the internal
+APIs unmodified from whatever the caller/ingress sent. `getClientIp()` in
+`utils/mcDebugReport.js` reads only `X-Mc-Client-Ip`, falling back to the
+socket address and finally to `"unknown"`; it deliberately never reads
+`X-Forwarded-For`, since that header is caller-influenced.
 
 ### Responses
 
@@ -114,7 +135,7 @@ values, so the trustworthy one — ours — stays last.
 | `201` | `{ success: true, threadId, url }` |
 | `400` | Validation failed; `error` names the offending field |
 | `401` | Missing or wrong bearer token |
-| `413` | A screenshot, or the total upload, exceeded its cap. Oversized `logs` are truncated instead of rejected, so they never produce a `413` |
+| `413` | A screenshot exceeded 8 MB, screenshots together exceeded 20 MB, or an uploaded logs *file* exceeded multer's 16 MB ceiling. Oversized `logs` sent as a text field (or as a file under 16 MB) are truncated instead of rejected, so they don't produce a `413` |
 | `429` | Rate limited; `retryAfter` in seconds |
 | `502` | Discord rejected the thread creation |
 | `503` | Discord client not ready; the mod should retry later |
@@ -143,6 +164,18 @@ original filename (sanitized).
 **Tags:** if the forum defines tags, apply the first whose name matches
 `/bug|debug|report/i`. If the forum requires a tag and nothing matched, apply
 the first available tag so creation does not fail.
+
+**Mentions:** both `threads.create` calls set `allowedMentions: { parse: [] }`
+on the message. `description` and `logs` are attacker-controlled — the mod is
+client-side — so nothing in the embed description or the log-tail content is
+ever parsed as a mention; an `@everyone` or role ping in a submitted log needs
+no special permission to land otherwise.
+
+**Screenshot-drop retry:** the second `threads.create` call (dropping images
+and retrying) fires only when `isAttachmentError()` judges the failure to be
+attachment-shaped — an HTTP 413, Discord error code `40005`, or a message
+mentioning "attachment", "file", or "size". Unrelated failures (bad
+permissions, a bad tag, etc.) propagate without a pointless retry.
 
 ## Nudge
 
