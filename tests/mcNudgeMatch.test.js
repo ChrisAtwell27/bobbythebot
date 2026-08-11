@@ -79,3 +79,13 @@ test("an unknown mode falls back to keyword behaviour", () => {
   assert.strictEqual(shouldNudge("hey guys I just joined this server today", "nonsense"), false);
   assert.strictEqual(shouldNudge("it crashed", "nonsense"), true);
 });
+
+test("hasBugKeyword matches doesn't work with curly apostrophe", () => {
+  const curlyForm = "it doesn" + String.fromCharCode(0x2019) + "t work";
+  assert.strictEqual(hasBugKeyword(curlyForm), true);
+});
+
+test("hasBugKeyword matches won't load with curly apostrophe", () => {
+  const curlyForm = "it won" + String.fromCharCode(0x2019) + "t load";
+  assert.strictEqual(hasBugKeyword(curlyForm), true);
+});

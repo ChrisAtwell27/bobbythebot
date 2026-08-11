@@ -15,10 +15,10 @@ const BUG_PATTERNS = [
   /\bcrash(es|ing|ed)?\b/i,
   /\berrors?\b/i,
   /\bfail(s|ing|ed)?\b/i,
-  /\bdoes\s*n['']?t\s+work\b/i,
+  /\bdoes\s*n['’]?t\s+work\b/i,
   /\bdoes\s+not\s+work\b/i,
   /\bnot\s+working\b/i,
-  /\bwo?n['']?t\s+(load|start|open|work|launch)\b/i,
+  /\bwo?n['’]?t\s+(load|start|open|work|launch)\b/i,
   /\bsupposed\s+to\b/i,
   /\bstuck\b/i,
 ];
