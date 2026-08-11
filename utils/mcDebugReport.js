@@ -1,0 +1,134 @@
+/**
+ * Pure helpers for the Minecraft in-game /debug webhook.
+ *
+ * Nothing here imports discord.js or express, so every branch is unit
+ * testable without mocking either one.
+ */
+
+const MAX_TITLE = 100; // Discord's thread name limit
+const MAX_DESCRIPTION = 2000;
+const MAX_VERSION = 64;
+const MAX_USERNAME = 32;
+const MAX_LOG_BYTES = 1024 * 1024;
+const MAX_SCREENSHOTS = 3;
+const LOG_TAIL_LINES = 15;
+const LOG_TAIL_CHARS = 1000;
+const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg"]);
+
+/**
+ * Build a forum thread title that always fits Discord's 100 character limit.
+ * Prefers breaking on a word boundary when one sits reasonably close to the cut.
+ */
+function buildThreadTitle(version, description) {
+  const safeVersion = String(version || "unknown").trim().slice(0, MAX_VERSION);
+  const prefix = `[v${safeVersion}] `;
+  const text = String(description || "").replace(/\s+/g, " ").trim();
+  const room = MAX_TITLE - prefix.length;
+
+  if (room <= 0) return prefix.trim().slice(0, MAX_TITLE);
+  if (!text) return `${prefix}bug report`.slice(0, MAX_TITLE);
+  if (text.length <= room) return prefix + text;
+
+  let cut = text.slice(0, room - 1);
+  const lastSpace = cut.lastIndexOf(" ");
+  if (lastSpace > room * 0.6) cut = cut.slice(0, lastSpace);
+  return `${prefix}${cut.trimEnd()}…`;
+}
+
+/**
+ * The last few log lines, for an inline code block in the thread's first message.
+ * Stack traces live at the end of a log, so the tail is the useful part.
+ */
+function buildLogTail(logs) {
+  const text = String(logs || "").trimEnd();
+  if (!text) return "";
+
+  const lines = text.split(/\r?\n/).slice(-LOG_TAIL_LINES);
+  let tail = lines.join("\n");
+  if (tail.length > LOG_TAIL_CHARS) tail = tail.slice(-LOG_TAIL_CHARS);
+  return tail;
+}
+
+/**
+ * Cap logs at 1 MB, keeping the END. Oversized logs are trimmed, never rejected.
+ */
+function truncateLogs(logs) {
+  const text = String(logs || "");
+  const buf = Buffer.from(text, "utf8");
+  if (buf.length <= MAX_LOG_BYTES) return { text, truncated: false };
+  return { text: buf.subarray(buf.length - MAX_LOG_BYTES).toString("utf8"), truncated: true };
+}
+
+function validateReport({ version, description, username, screenshots = [] } = {}) {
+  if (!version || !String(version).trim()) {
+    return { ok: false, status: 400, error: "version is required" };
+  }
+  if (String(version).length > MAX_VERSION) {
+    return { ok: false, status: 400, error: `version must be ${MAX_VERSION} characters or fewer` };
+  }
+  if (!description || !String(description).trim()) {
+    return { ok: false, status: 400, error: "description is required" };
+  }
+  if (String(description).length > MAX_DESCRIPTION) {
+    return { ok: false, status: 400, error: `description must be ${MAX_DESCRIPTION} characters or fewer` };
+  }
+  if (username && String(username).length > MAX_USERNAME) {
+    return { ok: false, status: 400, error: `username must be ${MAX_USERNAME} characters or fewer` };
+  }
+  if (screenshots.length > MAX_SCREENSHOTS) {
+    return { ok: false, status: 400, error: `at most ${MAX_SCREENSHOTS} screenshots are allowed` };
+  }
+  for (const file of screenshots) {
+    if (!ALLOWED_IMAGE_TYPES.has(file.mimetype)) {
+      return {
+        ok: false,
+        status: 400,
+        error: `screenshots must be image/png or image/jpeg (got ${file.mimetype})`,
+      };
+    }
+  }
+  return { ok: true };
+}
+
+function sanitizeFilename(name, fallback = "screenshot.png") {
+  const base = String(name || "")
+    .split(/[\\/]/)
+    .pop()
+    .replace(/[^\w.\-]/g, "_")
+    .replace(/^[._]+/, "")
+    .slice(0, 64);
+  return /[a-zA-Z0-9]/.test(base) ? base : fallback;
+}
+
+/**
+ * Every request reaches this server through the proxy in index.js, so the socket
+ * address is always localhost. The proxy APPENDS the real remote address to
+ * x-forwarded-for; a forging client can only prepend, so the last entry is ours.
+ */
+function getClientIp(req) {
+  const header = req.headers?.["x-forwarded-for"];
+  if (header) {
+    const parts = String(header)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (parts.length) return parts[parts.length - 1];
+  }
+  return req.socket?.remoteAddress || "unknown";
+}
+
+module.exports = {
+  buildThreadTitle,
+  buildLogTail,
+  truncateLogs,
+  validateReport,
+  sanitizeFilename,
+  getClientIp,
+  MAX_TITLE,
+  MAX_DESCRIPTION,
+  MAX_VERSION,
+  MAX_USERNAME,
+  MAX_LOG_BYTES,
+  MAX_SCREENSHOTS,
+  ALLOWED_IMAGE_TYPES,
+};
