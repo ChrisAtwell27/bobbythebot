@@ -2,8 +2,9 @@
  * In-memory rate limiter for the Minecraft debug webhook.
  *
  * `now` is always passed in rather than read from the clock, so tests can
- * advance time instead of sleeping. Entries older than a day are pruned on
- * every call, which keeps the map bounded without a background timer.
+ * advance time instead of sleeping. Per-key timestamp arrays are pruned by age
+ * on every call, and total key count is capped at `maxKeys` with oldest-first
+ * eviction, which keeps the map bounded without a background timer.
  */
 
 const DEFAULTS = {
@@ -11,15 +12,17 @@ const DEFAULTS = {
   burstWindowMs: 10 * 60 * 1000,
   daily: 20,
   dayMs: 24 * 60 * 60 * 1000,
+  maxKeys: 10000,
 };
 
 class RateLimiter {
   constructor(options = {}) {
-    const { burst, burstWindowMs, daily, dayMs } = { ...DEFAULTS, ...options };
+    const { burst, burstWindowMs, daily, dayMs, maxKeys } = { ...DEFAULTS, ...options };
     this.burst = burst;
     this.burstWindowMs = burstWindowMs;
     this.daily = daily;
     this.dayMs = dayMs;
+    this.maxKeys = maxKeys;
     this.hits = new Map(); // key -> number[] of hit timestamps
   }
 
@@ -35,17 +38,21 @@ class RateLimiter {
     const hits = this.hits.get(key) || [];
     const recent = hits.filter((t) => now - t < this.burstWindowMs);
 
+    let retryAfter = 1;
+    let blocked = false;
+
     if (recent.length >= this.burst) {
-      return {
-        allowed: false,
-        retryAfter: Math.max(1, Math.ceil((this.burstWindowMs - (now - recent[0])) / 1000)),
-      };
+      blocked = true;
+      retryAfter = Math.max(1, Math.ceil((this.burstWindowMs - (now - recent[0])) / 1000));
     }
     if (hits.length >= this.daily) {
-      return {
-        allowed: false,
-        retryAfter: Math.max(1, Math.ceil((this.dayMs - (now - hits[0])) / 1000)),
-      };
+      blocked = true;
+      const dailyRetry = Math.max(1, Math.ceil((this.dayMs - (now - hits[0])) / 1000));
+      retryAfter = Math.max(retryAfter, dailyRetry);
+    }
+
+    if (blocked) {
+      return { allowed: false, retryAfter };
     }
     return { allowed: true };
   }
@@ -55,6 +62,12 @@ class RateLimiter {
     const hits = (this.hits.get(key) || []).filter((t) => now - t < this.dayMs);
     hits.push(now);
     this.hits.set(key, hits);
+
+    // Enforce maxKeys cap with oldest-first eviction
+    while (this.hits.size > this.maxKeys) {
+      const oldestKey = this.hits.keys().next().value;
+      this.hits.delete(oldestKey);
+    }
   }
 
   prune(now) {
