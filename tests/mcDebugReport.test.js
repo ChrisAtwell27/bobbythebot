@@ -188,21 +188,31 @@ test("validateReport does not throw when screenshots is null (regression test fo
 });
 
 test("truncateLogs snaps to UTF-8 boundaries without corruption (regression test for finding 2)", () => {
-  // Create logs with a 3-byte UTF-8 character (€ = U+20AC = E2 82 AC in UTF-8)
-  // Make the logs large enough to exceed MAX_LOG_BYTES, with the euro sign straddling the boundary
-  const beforeMarker = "X".repeat(MAX_LOG_BYTES - 1);
-  const euro = "€";
-  const tailMarker = "TAIL_END";
-  const logs = beforeMarker + euro + tailMarker;
+  // Position a 3-byte UTF-8 char (€ = E2 82 AC) so the cut lands INSIDE it.
+  // Total buffer: MAX_LOG_BYTES + 101 bytes, euro at bytes 100-102.
+  // cutOffset will be 101 (middle of euro). The buggy code slices there and corrupts.
+  // The fixed code scans forward to skip the continuation bytes and lands at byte 103.
+  const prefix = "X".repeat(100);  // bytes 0-99
+  const euro = "€";                // bytes 100-102 (3-byte UTF-8)
+  const suffix = "A".repeat(MAX_LOG_BYTES - 10) + "TAIL_END";  // (MAX_LOG_BYTES - 2) bytes
+  const logs = prefix + euro + suffix;
 
   const result = truncateLogs(logs);
   assert.strictEqual(result.truncated, true);
   // Result must not exceed MAX_LOG_BYTES in byte length
-  assert.ok(Buffer.byteLength(result.text) <= MAX_LOG_BYTES, `got ${Buffer.byteLength(result.text)} bytes`);
+  assert.ok(Buffer.byteLength(result.text) <= MAX_LOG_BYTES, `got ${Buffer.byteLength(result.text)} bytes, MAX was ${MAX_LOG_BYTES}`);
   // Result must not start with replacement character (corruption indicator)
-  assert.ok(!result.text.startsWith("�"), "result should not contain corruption markers");
-  // Result should end with tail marker (or at least not have it corrupted)
+  assert.ok(!result.text.startsWith("�"), "result should not start with U+FFFD (corruption marker)");
+  // Result should still contain TAIL marker (the fixed code skips the euro entirely)
   assert.ok(result.text.includes("TAIL"), "tail marker should be preserved");
+});
+
+test("truncateLogs does not truncate when buffer length exactly equals MAX_LOG_BYTES", () => {
+  const logs = "X".repeat(MAX_LOG_BYTES);
+  const result = truncateLogs(logs);
+  assert.strictEqual(result.truncated, false, "should not be marked as truncated");
+  assert.strictEqual(result.text, logs, "text should be returned intact");
+  assert.strictEqual(Buffer.byteLength(result.text), MAX_LOG_BYTES);
 });
 
 test("sanitizeFilename returns a usable string even when fallback is null (regression test for finding 3)", () => {
