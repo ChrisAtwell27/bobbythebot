@@ -44,7 +44,8 @@ processors. No new Discord event listener is added.
 | Component | Responsibility |
 | --- | --- |
 | `api/mcDebugServer.js` | HTTP endpoint, auth, rate limiting, forum thread creation |
-| `utils/mcDebugReport.js` | Pure helpers: validation, thread title, log tail |
+| `utils/mcDebugReport.js` | Pure helpers: validation, thread title, log tail, client IP |
+| `utils/mcDebugRateLimit.js` | Pure rate limiter, time injected for testability |
 | `events/mcForumNudgeHandler.js` | Message processor that replies to new members |
 | `utils/mcNudgeMatch.js` | Pure helper: does this message text look like a bug report |
 | `database/models/User.js` | Gains `mcForumNudgedAt` so each member is nudged once |
@@ -68,7 +69,7 @@ Content-Type: multipart/form-data
 | --- | --- | --- |
 | `version` | text | required, 1–64 chars |
 | `description` | text | required, 1–2000 chars |
-| `logs` | text or file | optional, max 1 MB; if longer, keep the **last** 1 MB |
+| `logs` | text or file | optional, accepted up to 8 MB, then truncated to the **last** 1 MB. Same limit whether sent as a text field or a file |
 | `username` | text | optional, ≤32 chars, the player's Minecraft name |
 | `screenshots` | file, 0–3 | `image/png` or `image/jpeg` only, ≤8 MB each, ≤20 MB total |
 
@@ -87,14 +88,24 @@ differs from `mafiaWebhookServer.js`, which skips auth when unconfigured.
 
 ### Rate limiting
 
-In-memory, using the existing `CleanupMap` from `utils/memoryUtils.js`. Two
-independent keys, both enforced:
+In-memory, in a dedicated `utils/mcDebugRateLimit.js`. It takes `now` as an
+explicit argument, so the tests drive time directly instead of sleeping; the
+existing `CleanupMap` is not used here because its expiry only runs on a timer,
+which would make the limiter both untestable and briefly wrong. Old entries are
+pruned on every check, so the map stays bounded. Two independent keys, both
+enforced:
 
 - per source IP: 3 reports / 10 min, 20 / day
 - per `username` when supplied: 3 reports / 10 min, 20 / day
 
 Limits reset on bot restart. That is acceptable: the failure mode is a brief
 window of extra allowance, not lost data.
+
+Because every request arrives through the proxy in `index.js`, the socket
+address is always localhost and useless as a limiter key. The proxy therefore
+**appends** the real remote address to `X-Forwarded-For`, and the limiter reads
+the **last** entry in that header. A client that forges the header only prepends
+values, so the trustworthy one — ours — stays last.
 
 ### Responses
 
@@ -148,7 +159,7 @@ The nudge fires only when every condition holds:
 4. The member has a role named `minecraft` or `craftics`, matched
    case-insensitively. `MC_NUDGE_ROLE_IDS` (comma-separated) overrides name
    matching with exact ids.
-5. The message text matches (see below).
+5. The message text matches the bug-text rules (see below).
 6. The user's `mcForumNudgedAt` is unset.
 
 On a match the bot replies publicly to the message, mentioning the forum
@@ -157,7 +168,9 @@ most once, ever.
 
 ### Text matching
 
-Default mode requires **both** a bug keyword and more than 6 words:
+Default mode (`keyword`) triggers on a bug keyword at any message length. A
+short report like "game crashes on load" is exactly what belongs in the forum,
+so length is not a gate:
 
 ```text
 bug, issue, problem, glitch, broke, broken, crash, crashing, error,
@@ -166,9 +179,10 @@ won't load, wont load, supposed to, stuck
 ```
 
 The literal reading of the original request — keyword **or** more than 6 words —
-fires on nearly every message a new member sends, including greetings. Setting
-`MC_NUDGE_MODE=keyword-or-length` restores that literal behavior; the default is
-`keyword`.
+fires on nearly every message a new member sends, including greetings, because
+the length arm matches any ordinary sentence. Dropping that arm is the whole
+difference between the two modes. Setting `MC_NUDGE_MODE=keyword-or-length`
+restores the literal behavior; the default is `keyword`.
 
 ## Error handling
 
