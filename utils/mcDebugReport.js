@@ -51,15 +51,34 @@ function buildLogTail(logs) {
 
 /**
  * Cap logs at 1 MB, keeping the END. Oversized logs are trimmed, never rejected.
+ * Snaps to UTF-8 character boundaries to avoid corruption.
  */
 function truncateLogs(logs) {
   const text = String(logs || "");
   const buf = Buffer.from(text, "utf8");
   if (buf.length <= MAX_LOG_BYTES) return { text, truncated: false };
-  return { text: buf.subarray(buf.length - MAX_LOG_BYTES).toString("utf8"), truncated: true };
+
+  // Start from where we'd cut
+  let cutOffset = buf.length - MAX_LOG_BYTES;
+
+  // Scan forward to find a valid UTF-8 character boundary.
+  // UTF-8 continuation bytes have pattern 10xxxxxx (0x80-0xBF).
+  // Skip past any continuation bytes to find the next character start.
+  while (cutOffset < buf.length) {
+    const byte = buf[cutOffset];
+    // If not a continuation byte, we're at a character boundary
+    if ((byte & 0xC0) !== 0x80) break;
+    cutOffset++;
+  }
+
+  const decodedText = buf.subarray(cutOffset).toString("utf8");
+  return { text: decodedText, truncated: true };
 }
 
-function validateReport({ version, description, username, screenshots = [] } = {}) {
+function validateReport({ version, description, username, screenshots } = {}) {
+  // Normalize screenshots: null/undefined becomes empty array
+  const files = Array.isArray(screenshots) ? screenshots : [];
+
   if (!version || !String(version).trim()) {
     return { ok: false, status: 400, error: "version is required" };
   }
@@ -75,10 +94,10 @@ function validateReport({ version, description, username, screenshots = [] } = {
   if (username && String(username).length > MAX_USERNAME) {
     return { ok: false, status: 400, error: `username must be ${MAX_USERNAME} characters or fewer` };
   }
-  if (screenshots.length > MAX_SCREENSHOTS) {
+  if (files.length > MAX_SCREENSHOTS) {
     return { ok: false, status: 400, error: `at most ${MAX_SCREENSHOTS} screenshots are allowed` };
   }
-  for (const file of screenshots) {
+  for (const file of files) {
     if (!ALLOWED_IMAGE_TYPES.has(file.mimetype)) {
       return {
         ok: false,
@@ -91,6 +110,11 @@ function validateReport({ version, description, username, screenshots = [] } = {
 }
 
 function sanitizeFilename(name, fallback = "screenshot.png") {
+  // Guard fallback: null/undefined becomes default
+  if (!fallback || typeof fallback !== "string") {
+    fallback = "screenshot.png";
+  }
+
   const base = String(name || "")
     .split(/[\\/]/)
     .pop()

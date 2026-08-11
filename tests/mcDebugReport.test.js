@@ -159,3 +159,55 @@ test("getClientIp falls back to the socket address", () => {
   const req = { headers: {}, socket: { remoteAddress: "198.51.100.7" } };
   assert.strictEqual(getClientIp(req), "198.51.100.7");
 });
+
+test("validateReport rejects a version longer than MAX_VERSION (64 chars)", () => {
+  const result = validateReport({ version: "x".repeat(65), description: "x" });
+  assert.strictEqual(result.ok, false);
+  assert.match(result.error, /version/);
+});
+
+test("validateReport rejects a username longer than MAX_USERNAME (32 chars)", () => {
+  const result = validateReport({
+    version: "1.0",
+    description: "x",
+    username: "x".repeat(33),
+  });
+  assert.strictEqual(result.ok, false);
+  assert.match(result.error, /username/);
+});
+
+test("validateReport does not throw when screenshots is null (regression test for finding 1)", () => {
+  assert.doesNotThrow(() => {
+    const result = validateReport({
+      version: "1.0",
+      description: "x",
+      screenshots: null,
+    });
+    assert.strictEqual(result.ok, true);
+  });
+});
+
+test("truncateLogs snaps to UTF-8 boundaries without corruption (regression test for finding 2)", () => {
+  // Create logs with a 3-byte UTF-8 character (€ = U+20AC = E2 82 AC in UTF-8)
+  // Make the logs large enough to exceed MAX_LOG_BYTES, with the euro sign straddling the boundary
+  const beforeMarker = "X".repeat(MAX_LOG_BYTES - 1);
+  const euro = "€";
+  const tailMarker = "TAIL_END";
+  const logs = beforeMarker + euro + tailMarker;
+
+  const result = truncateLogs(logs);
+  assert.strictEqual(result.truncated, true);
+  // Result must not exceed MAX_LOG_BYTES in byte length
+  assert.ok(Buffer.byteLength(result.text) <= MAX_LOG_BYTES, `got ${Buffer.byteLength(result.text)} bytes`);
+  // Result must not start with replacement character (corruption indicator)
+  assert.ok(!result.text.startsWith("�"), "result should not contain corruption markers");
+  // Result should end with tail marker (or at least not have it corrupted)
+  assert.ok(result.text.includes("TAIL"), "tail marker should be preserved");
+});
+
+test("sanitizeFilename returns a usable string even when fallback is null (regression test for finding 3)", () => {
+  const result = sanitizeFilename("!!!", null);
+  assert.strictEqual(typeof result, "string");
+  assert.ok(result.length > 0, "result should be non-empty");
+  assert.match(result, /[a-zA-Z0-9]/);
+});
